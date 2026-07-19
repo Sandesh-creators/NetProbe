@@ -1,5 +1,6 @@
 package com.netprobe.diagnostics.ui.screens
 
+import android.bluetooth.BluetoothAdapter
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -32,6 +33,9 @@ fun BluetoothExplorerScreen(viewModel: BluetoothViewModel) {
     val btState by viewModel.btState.collectAsState()
     val selectedDevice by viewModel.selectedDevice.collectAsState()
 
+    var sortCriterion by remember { mutableStateOf("RSSI") }
+    var typeFilter by remember { mutableStateOf("ALL") }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -63,7 +67,7 @@ fun BluetoothExplorerScreen(viewModel: BluetoothViewModel) {
             )
         }
 
-        // ── Bluetooth Off Warning ─────────────────────────────
+        // ── Bluetooth Off Warning + Enable Button ─────────────
         if (btState is BluetoothState.BluetoothOff) {
             Box(
                 modifier = Modifier
@@ -71,6 +75,7 @@ fun BluetoothExplorerScreen(viewModel: BluetoothViewModel) {
                     .clip(RoundedCornerShape(6.dp))
                     .background(TerminalRed.copy(alpha = 0.1f))
                     .border(1.dp, TerminalRed.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                    .clickable { BluetoothAdapter.getDefaultAdapter()?.enable() }
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -78,7 +83,21 @@ fun BluetoothExplorerScreen(viewModel: BluetoothViewModel) {
                     Icon(Icons.Default.BluetoothDisabled, contentDescription = null, tint = TerminalRed)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("BLUETOOTH IS DISABLED", style = MaterialTheme.typography.bodyMedium, color = TerminalRed)
-                    Text("Enable Bluetooth to start scanning", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Text("Tap to enable Bluetooth", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(TerminalRed.copy(alpha = 0.2f))
+                            .border(1.dp, TerminalRed.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "ENABLE BLUETOOTH",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = TerminalRed
+                        )
+                    }
                 }
             }
         }
@@ -96,6 +115,60 @@ fun BluetoothExplorerScreen(viewModel: BluetoothViewModel) {
             LegendDot("UNK", BtUnknownColor)
         }
 
+        // ── Filter / Sort Row ─────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(
+                selected = typeFilter == "ALL",
+                onClick = { typeFilter = "ALL" },
+                label = { Text("ALL", style = MaterialTheme.typography.labelSmall) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = TerminalCyan.copy(alpha = 0.15f),
+                    selectedLabelColor = TerminalCyan
+                )
+            )
+            FilterChip(
+                selected = typeFilter == "CLASSIC",
+                onClick = { typeFilter = "CLASSIC" },
+                label = { Text("CLASSIC", style = MaterialTheme.typography.labelSmall) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = BtClassicColor.copy(alpha = 0.15f),
+                    selectedLabelColor = BtClassicColor
+                )
+            )
+            FilterChip(
+                selected = typeFilter == "BLE",
+                onClick = { typeFilter = "BLE" },
+                label = { Text("BLE", style = MaterialTheme.typography.labelSmall) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = BtLeColor.copy(alpha = 0.15f),
+                    selectedLabelColor = BtLeColor
+                )
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(SurfaceCardDark)
+                    .border(1.dp, SurfaceOverlay, RoundedCornerShape(4.dp))
+                    .clickable {
+                        sortCriterion = if (sortCriterion == "RSSI") "NAME" else "RSSI"
+                    }
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = if (sortCriterion == "RSSI") "SORT: RSSI" else "SORT: NAME",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TerminalAmber
+                )
+            }
+        }
+
         // ── Device List ───────────────────────────────────────
         val devices = when (btState) {
             is BluetoothState.Scanning -> (btState as BluetoothState.Scanning).devices
@@ -103,20 +176,56 @@ fun BluetoothExplorerScreen(viewModel: BluetoothViewModel) {
             else -> emptyList()
         }
 
-        LazyColumn(
-            state = rememberLazyListState(),
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            items(devices, key = { it.address }) { device ->
-                DeviceRow(
-                    device = device,
-                    isSelected = selectedDevice?.address == device.address,
-                    onClick = {
-                        if (selectedDevice?.address == device.address) viewModel.clearSelection()
-                        else viewModel.selectDevice(device)
-                    }
-                )
+        val filteredAndSorted = remember(devices, typeFilter, sortCriterion) {
+            val filtered = when (typeFilter) {
+                "CLASSIC" -> devices.filter { it.type == DeviceType.CLASSIC || it.type == DeviceType.DUAL }
+                "BLE" -> devices.filter { it.type == DeviceType.LE }
+                else -> devices
+            }
+            when (sortCriterion) {
+                "NAME" -> filtered.sortedBy { it.name?.lowercase() ?: "" }
+                else -> filtered.sortedByDescending { it.rssi }
+            }
+        }
+
+        if (filteredAndSorted.isEmpty() && btState !is BluetoothState.BluetoothOff) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.BluetoothSearching,
+                        contentDescription = null,
+                        tint = TextDisabled,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Tap START BT SCAN to discover nearby devices",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                state = rememberLazyListState(),
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(filteredAndSorted, key = { it.address }) { device ->
+                    DeviceRow(
+                        device = device,
+                        isSelected = selectedDevice?.address == device.address,
+                        onClick = {
+                            if (selectedDevice?.address == device.address) viewModel.clearSelection()
+                            else viewModel.selectDevice(device)
+                        }
+                    )
+                }
             }
         }
 
@@ -216,7 +325,6 @@ private fun DeviceRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            // Device type indicator
             Box(
                 modifier = Modifier
                     .size(10.dp)
@@ -247,7 +355,6 @@ private fun DeviceRow(
             }
         }
 
-        // RSSI indicator
         Column(horizontalAlignment = Alignment.End) {
             if (device.rssi != 0) {
                 Text(
@@ -257,7 +364,6 @@ private fun DeviceRow(
                     fontWeight = FontWeight.Bold
                 )
             }
-            // Signal bars visual
             SignalBars(rssi = device.rssi, color = rssiColor)
         }
     }
@@ -315,6 +421,10 @@ private fun DeviceDetailPanel(
         DetailRow("Type", device.type.displayName)
         DetailRow("RSSI", "${device.rssi} dBm")
         DetailRow("Bond", bondStateLabel(device.bondState))
+
+        if (device.batteryLevel != null && device.batteryLevel > 0) {
+            DetailRow("Battery", "${device.batteryLevel}%")
+        }
 
         if (device.uuids.isNotEmpty()) {
             Spacer(modifier = Modifier.height(6.dp))

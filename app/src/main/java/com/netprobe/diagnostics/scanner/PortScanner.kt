@@ -68,22 +68,25 @@ class PortScanner(private val portDao: PortDao) {
 
     private suspend fun scanSinglePort(targetIp: String, port: Int): PortInfo? {
         return try {
-            val socket = Socket()
-            socket.connect(InetSocketAddress(targetIp, port), CONNECT_TIMEOUT_MS)
-            socket.close()
-
-            val entity = portDao.getPortInfo(port)
-
-            PortInfo(
-                port = port,
-                protocol = entity?.protocol ?: "TCP",
-                service = entity?.service ?: "Unknown",
-                state = PortState.OPEN
-            )
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(targetIp, port), CONNECT_TIMEOUT_MS)
+                val entity = portDao.getPortInfo(port)
+                PortInfo(
+                    port = port,
+                    protocol = entity?.protocol ?: "TCP",
+                    service = entity?.service ?: "Unknown",
+                    state = PortState.OPEN
+                )
+            }
         } catch (e: java.net.ConnectException) {
             null
         } catch (e: java.net.SocketTimeoutException) {
-            null
+            PortInfo(
+                port = port,
+                protocol = "TCP",
+                service = portDao.getPortInfo(port)?.service ?: "Unknown",
+                state = PortState.FILTERED
+            )
         } catch (e: Exception) {
             null
         }
@@ -91,10 +94,10 @@ class PortScanner(private val portDao: PortDao) {
 
     suspend fun isPortOpen(targetIp: String, port: Int): Boolean {
         return try {
-            val socket = Socket()
-            socket.connect(InetSocketAddress(targetIp, port), CONNECT_TIMEOUT_MS)
-            socket.close()
-            true
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(targetIp, port), CONNECT_TIMEOUT_MS)
+                true
+            }
         } catch (_: Exception) {
             false
         }

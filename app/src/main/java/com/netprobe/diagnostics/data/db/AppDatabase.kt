@@ -7,9 +7,10 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-@Database(entities = [PortEntity::class], version = 1, exportSchema = false)
+@Database(entities = [PortEntity::class], version = 1, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun portDao(): PortDao
@@ -25,7 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "netprobe_database"
                 )
-                    .addCallback(PortDictionaryCallback())
+                    .addCallback(PortDictionaryCallback(context.applicationContext))
                     .build()
                 INSTANCE = instance
                 instance
@@ -33,13 +34,14 @@ abstract class AppDatabase : RoomDatabase() {
         }
     }
 
-    private class PortDictionaryCallback : Callback() {
+    private class PortDictionaryCallback(private val appContext: Context) : Callback() {
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
         override fun onCreate(db: SupportSQLiteDatabase) {
             super.onCreate(db)
-            INSTANCE?.let { database ->
-                CoroutineScope(Dispatchers.IO).launch {
-                    populateDatabase(database.portDao())
-                }
+            val database = getDatabase(appContext)
+            scope.launch {
+                populateDatabase(database.portDao())
             }
         }
 

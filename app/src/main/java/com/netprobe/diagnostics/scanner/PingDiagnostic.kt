@@ -10,10 +10,12 @@ import kotlinx.coroutines.flow.flowOn
 
 class PingDiagnostic {
 
-    /**
-     * Runs continuous ICMP ping against a target, emitting each result
-     * and updated statistics. Runs until cancelled.
-     */
+    companion object {
+        private const val MAX_RTTS = 100
+        private val RTT_PATTERN = Regex("time=(\\d+\\.?\\d*)")
+        private val PING_PATHS = arrayOf("/system/bin/ping", "/vendor/bin/ping", "/system/xbin/ping")
+    }
+
     fun continuousPing(
         targetIp: String,
         intervalMs: Long = 1000,
@@ -21,11 +23,13 @@ class PingDiagnostic {
     ): Flow<PingEvent> = flow {
         var sequence = 0
         val rtts = mutableListOf<Long>()
+        val pingBinary = findPingBinary()
 
         while (true) {
             sequence++
-            val result = executePing(targetIp, sequence, timeoutMs)
+            val result = executePing(pingBinary, targetIp, sequence, timeoutMs)
             rtts.add(result.rttMs)
+            if (rtts.size > MAX_RTTS) rtts.removeAt(0)
 
             val stats = computeStats(targetIp, rtts, sequence)
 
@@ -36,25 +40,32 @@ class PingDiagnostic {
         }
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun executePing(
+    private fun findPingBinary(): String {
+        for (path in PING_PATHS) {
+            if (java.io.File(path).exists()) return path
+        }
+        return "/system/bin/ping"
+    }
+
+    private fun executePing(
+        pingBinary: String,
         targetIp: String,
         sequence: Int,
         timeoutMs: Int
     ): PingResult {
         return try {
-            val start = System.nanoTime()
             val process = Runtime.getRuntime().exec(
                 arrayOf(
-                    "/system/bin/ping",
+                    pingBinary,
                     "-c", "1",
                     "-W", "${timeoutMs / 1000}",
-                    "-i", "0.2",
                     targetIp
                 )
             )
             val exitCode = process.waitFor()
-            val elapsedNs = System.nanoTime() - start
-            val rttMs = elapsedNs / 1_000_000
+            val output = process.inputStream.bufferedReader().readText()
+
+            val rttMs = parseRttFromOutput(output)
 
             PingResult(
                 sequenceNumber = sequence,
@@ -70,6 +81,11 @@ class PingDiagnostic {
         }
     }
 
+    private fun parseRttFromOutput(output: String): Long {
+        val match = RTT_PATTERN.find(output) ?: return 0L
+        return match.groupValues[1].toDoubleOrNull()?.toLong() ?: 0L
+    }
+
     private fun computeStats(host: String, rtts: List<Long>, sequence: Int): PingStats {
         val received = rtts.filter { it > 0 }
         val total = sequence
@@ -79,7 +95,6 @@ class PingDiagnostic {
         val maxRtt = received.maxOrNull() ?: 0L
         val avgRtt = if (received.isNotEmpty()) received.sum() / received.size else 0L
 
-        // Jitter: mean deviation between consecutive RTTs
         val jitter = if (received.size >= 2) {
             val diffs = received.zipWithNext().map { (a, b) -> kotlin.math.abs(a - b) }
             diffs.sum() / diffs.size

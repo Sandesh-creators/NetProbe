@@ -59,7 +59,7 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             Text(
                 text = if (rawCount > 0 && networkCount != rawCount) "$networkCount APs (${rawCount} raw)" else "$networkCount APs",
                 style = MaterialTheme.typography.labelMedium,
-                color = if (networkCount == 0 && rawCount > 0) TerminalAmber else TerminalAmber
+                color = TerminalAmber
             )
         }
 
@@ -72,6 +72,7 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             BandChip("ALL", selectedBand == null) { viewModel.selectBand(null) }
             BandChip("2.4 GHz", selectedBand == WifiBand.BAND_2_4_GHZ) { viewModel.selectBand(WifiBand.BAND_2_4_GHZ) }
             BandChip("5 GHz", selectedBand == WifiBand.BAND_5_GHZ) { viewModel.selectBand(WifiBand.BAND_5_GHZ) }
+            BandChip("6 GHz", selectedBand == WifiBand.BAND_6_GHZ) { viewModel.selectBand(WifiBand.BAND_6_GHZ) }
         }
 
         if (analyzerState is AnalyzerState.Error) {
@@ -298,6 +299,47 @@ private fun ChannelDetailRow(occ: ChannelOccupancy) {
             )
         }
     }
+
+    if (occ.networks.isNotEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SurfaceDark)
+                .border(1.dp, SurfaceOverlay, RoundedCornerShape(4.dp))
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+        ) {
+            occ.networks.forEach { net ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 1.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = net.ssid.ifEmpty { "(hidden)" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = extractSecurityType(net.capabilities),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TerminalCyan
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "${net.rssi} dBm",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -322,5 +364,17 @@ private fun BandChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
             style = MaterialTheme.typography.labelSmall,
             color = if (isSelected) TerminalAmber else TextSecondary
         )
+    }
+}
+
+private fun extractSecurityType(capabilities: String): String {
+    return when {
+        capabilities.contains("WPA3") -> "WPA3"
+        capabilities.contains("WPA2") -> "WPA2"
+        capabilities.contains("WPA") -> "WPA"
+        capabilities.contains("WEP") -> "WEP"
+        capabilities.contains("OWE") -> "OWE"
+        capabilities.contains("EAP") -> "WPA2-Enterprise"
+        else -> "Open"
     }
 }

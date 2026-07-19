@@ -1,7 +1,10 @@
 package com.netprobe.diagnostics.viewmodel
 
 import android.app.Application
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,6 +12,7 @@ import com.netprobe.diagnostics.data.model.BluetoothDeviceInfo
 import com.netprobe.diagnostics.scanner.BleScanner
 import com.netprobe.diagnostics.service.BatteryMonitorService
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,16 +29,39 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
     val selectedDevice: StateFlow<BluetoothDeviceInfo?> = _selectedDevice.asStateFlow()
 
     private var scanJob: Job? = null
+    private var stateMonitorJob: Job? = null
 
     init {
         checkBluetoothState()
+        startStateMonitor()
     }
 
     private fun checkBluetoothState() {
         if (!bleScanner.isBluetoothEnabled()) {
             _btState.value = BluetoothState.BluetoothOff
         } else {
-            _btState.value = BluetoothState.Ready
+            if (_btState.value is BluetoothState.Initializing) {
+                _btState.value = BluetoothState.Ready
+            }
+        }
+    }
+
+    private fun startStateMonitor() {
+        stateMonitorJob?.cancel()
+        stateMonitorJob = viewModelScope.launch {
+            while (true) {
+                delay(2000)
+                val isEnabled = bleScanner.isBluetoothEnabled()
+                val current = _btState.value
+
+                if (!isEnabled && current !is BluetoothState.BluetoothOff && current !is BluetoothState.Initializing) {
+                    scanJob?.cancel()
+                    scanJob = null
+                    _btState.value = BluetoothState.BluetoothOff
+                } else if (isEnabled && current is BluetoothState.BluetoothOff) {
+                    _btState.value = BluetoothState.Ready
+                }
+            }
         }
     }
 
@@ -48,11 +75,9 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         _btState.value = BluetoothState.Scanning(emptyList())
         scanJob = viewModelScope.launch {
             try {
-                // First emit bonded classic devices
                 val classic = bleScanner.getBondedClassicDevices()
                 _btState.value = BluetoothState.Scanning(classic)
 
-                // Then collect BLE scan results
                 bleScanner.scanBleDevices().collect { bleDevices ->
                     val merged = (classic + bleDevices)
                         .distinctBy { it.address }
@@ -103,6 +128,7 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
     override fun onCleared() {
         super.onCleared()
         scanJob?.cancel()
+        stateMonitorJob?.cancel()
     }
 }
 

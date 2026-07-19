@@ -77,7 +77,7 @@ class BleScanner(private val context: Context) {
         val discoveredDevices = mutableMapOf<String, BluetoothDeviceInfo>()
 
         val scanSettings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
             .setReportDelay(0)
             .build()
 

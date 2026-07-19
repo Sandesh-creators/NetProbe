@@ -155,7 +155,14 @@ fun ChannelCongestionChart(
             }
         }
 
-        val axisLabel = if (bandFilter == WifiBand.BAND_5_GHZ) "5 GHz Channels" else "2.4 GHz Channels"
+        val axisLabel = when {
+            bandFilter == WifiBand.BAND_5_GHZ -> "5 GHz Channels"
+            bandFilter == WifiBand.BAND_6_GHZ -> "6 GHz Channels"
+            bandFilter == WifiBand.BAND_2_4_GHZ -> "2.4 GHz Channels"
+            filtered.all { it.band == WifiBand.BAND_5_GHZ } -> "5 GHz Channels"
+            filtered.all { it.band == WifiBand.BAND_6_GHZ } -> "6 GHz Channels"
+            else -> "All Channels"
+        }
         Text(
             text = axisLabel,
             fontSize = 10.sp,

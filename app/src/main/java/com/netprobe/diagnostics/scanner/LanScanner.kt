@@ -10,6 +10,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import java.io.BufferedReader
+import java.io.FileReader
 import java.net.InetAddress
 import java.net.NetworkInterface
 
@@ -26,6 +28,7 @@ class LanScanner(private val context: Context) {
         val wifiManager =
             context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
 
+        @Suppress("DEPRECATION")
         val dhcpInfo = wifiManager.dhcpInfo ?: return null
         val deviceIp = dhcpInfo.ipAddress
 
@@ -51,13 +54,16 @@ class LanScanner(private val context: Context) {
             val elapsed = System.currentTimeMillis() - start
 
             val hostname = try {
-                InetAddress.getByName(ip).canonicalHostName?.takeIf { it != ip }
+                val addr = InetAddress.getByName(ip)
+                addr.canonicalHostName?.takeIf { it != ip }
             } catch (_: Exception) { null }
+
+            val mac = getMacFromArpTable(ip)
 
             HostInfo(
                 ip = ip,
                 hostname = hostname,
-                macAddress = null,
+                macAddress = mac,
                 isAlive = completed == 0 && elapsed < timeoutMs,
                 latencyMs = if (completed == 0) elapsed else 0L
             )
@@ -112,6 +118,25 @@ class LanScanner(private val context: Context) {
             subnetInfo = subnet
         ))
     }.flowOn(Dispatchers.Default)
+
+    private fun getMacFromArpTable(ip: String): String? {
+        return try {
+            BufferedReader(FileReader("/proc/net/arp")).use { reader ->
+                reader.readLines().drop(1).forEach { line ->
+                    val parts = line.split("\\s+".toRegex())
+                    if (parts.size >= 4 && parts[0] == ip) {
+                        val mac = parts[3]
+                        if (mac != "00:00:00:00:00:00" && mac.contains(":")) {
+                            return mac.uppercase()
+                        }
+                    }
+                }
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     companion object {
         fun intToIp(ipInt: Int): String {

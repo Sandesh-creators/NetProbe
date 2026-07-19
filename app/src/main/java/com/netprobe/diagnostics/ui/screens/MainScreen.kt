@@ -17,15 +17,20 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.netprobe.diagnostics.BuildConfig
 import com.netprobe.diagnostics.ui.theme.*
 import com.netprobe.diagnostics.viewmodel.BluetoothViewModel
 import com.netprobe.diagnostics.viewmodel.ChannelAnalyzerViewModel
 import com.netprobe.diagnostics.viewmodel.LanScanViewModel
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.*
 
 enum class Tab(val label: String, val icon: ImageVector, val tag: String) {
     LAN("LAN Scan", Icons.Default.NetworkCheck, "lan"),
     BLUETOOTH("BT Explorer", Icons.Default.Bluetooth, "bt"),
-    CHANNELS("Channel Map", Icons.Default.SignalCellularAlt, "ch")
+    CHANNELS("Channel Map", Icons.Default.SignalCellularAlt, "ch"),
+    DEVICE_INFO("Net Info", Icons.Default.SettingsEthernet, "net")
 }
 
 @Composable
@@ -65,7 +70,7 @@ fun MainScreen(
                             shape = RoundedCornerShape(4.dp)
                         )
                         .clickable { activeTab = tab }
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                        .padding(horizontal = 6.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -75,7 +80,7 @@ fun MainScreen(
                             modifier = Modifier.size(14.dp),
                             tint = if (isActive) TerminalGreen else TextDisabled
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = tab.label,
                             style = MaterialTheme.typography.labelSmall,
@@ -105,6 +110,7 @@ fun MainScreen(
                 Tab.LAN -> LanScanScreen(lanScanViewModel)
                 Tab.BLUETOOTH -> BluetoothExplorerScreen(bluetoothViewModel)
                 Tab.CHANNELS -> ChannelAnalyzerScreen(channelAnalyzerViewModel)
+                Tab.DEVICE_INFO -> DeviceInfoScreen()
             }
         }
     }
@@ -112,6 +118,16 @@ fun MainScreen(
 
 @Composable
 private fun TopStatusBar() {
+    var currentTime by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val sdf = SimpleDateFormat("HH:mm:ss", Locale.US)
+        while (true) {
+            currentTime = sdf.format(Date())
+            delay(1000)
+        }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -129,7 +145,7 @@ private fun TopStatusBar() {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "v1.1",
+                text = BuildConfig.VERSION_NAME,
                 style = MaterialTheme.typography.labelSmall,
                 color = TextDisabled
             )
@@ -138,7 +154,7 @@ private fun TopStatusBar() {
             StatusIndicator("SYS", TerminalGreen)
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date()),
+                text = currentTime,
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )

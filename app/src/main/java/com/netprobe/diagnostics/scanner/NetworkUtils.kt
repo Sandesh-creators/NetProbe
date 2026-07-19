@@ -14,11 +14,8 @@ object NetworkUtils {
         }
     }
 
-    /**
-     * Generates a Termux SSH intent URI for connecting to a host.
-     * Returns the intent URI string, or null if Termux isn't installed.
-     */
-    fun termuxSshUri(host: String, port: Int = 22, username: String = "root"): String {
-        return "ssh://$username@$host:$port"
+    fun formatSshCommand(host: String, port: Int = 22, username: String = ""): String {
+        val user = if (username.isNotEmpty()) "$username@$host" else host
+        return if (port == 22) "ssh $user" else "ssh -p $port $user"
     }
 }
