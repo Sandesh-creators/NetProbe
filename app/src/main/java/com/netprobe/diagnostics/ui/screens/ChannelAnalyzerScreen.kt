@@ -1,6 +1,5 @@
 package com.netprobe.diagnostics.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import com.netprobe.diagnostics.data.model.ChannelOccupancy
 import com.netprobe.diagnostics.data.model.CongestionLevel
 import com.netprobe.diagnostics.data.model.WifiBand
-import com.netprobe.diagnostics.data.model.WifiNetworkInfo
 import com.netprobe.diagnostics.ui.components.ChannelCongestionChart
 import com.netprobe.diagnostics.ui.components.CongestionLegend
 import com.netprobe.diagnostics.ui.theme.*
@@ -38,7 +36,6 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             .background(SurfaceDark)
             .padding(horizontal = 12.dp)
     ) {
-        // ── Header ────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -62,7 +59,6 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             )
         }
 
-        // ── Band Selector ─────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -74,13 +70,38 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             BandChip("5 GHz", selectedBand == WifiBand.BAND_5_GHZ) { viewModel.selectBand(WifiBand.BAND_5_GHZ) }
         }
 
+        // ── Error State ───────────────────────────────────────
+        if (analyzerState is AnalyzerState.Error) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(TerminalRed.copy(alpha = 0.1f))
+                    .border(1.dp, TerminalRed.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = TerminalRed)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = (analyzerState as AnalyzerState.Error).message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TerminalRed
+                    )
+                }
+            }
+        }
+
         // ── Congestion Chart ──────────────────────────────────
         val occupancy = when (analyzerState) {
             is AnalyzerState.Scanning -> (analyzerState as AnalyzerState.Scanning).channelOccupancy
             else -> emptyList()
         }
 
-        val filteredOccupancy = viewModel.getFilteredOccupancy(occupancy)
+        val filteredOccupancy = remember(occupancy, selectedBand) {
+            viewModel.getFilteredOccupancy(occupancy)
+        }
 
         if (filteredOccupancy.isNotEmpty()) {
             Card(
@@ -107,7 +128,7 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             }
         }
 
-        // ── BLE Channel Overlay Note ──────────────────────────
+        // ── BLE Note ──────────────────────────────────────────
         if (selectedBand == null || selectedBand == WifiBand.BAND_2_4_GHZ) {
             Card(
                 modifier = Modifier
@@ -136,13 +157,13 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             }
         }
 
-        // ── Detailed Channel List ─────────────────────────────
+        // ── Channel List ──────────────────────────────────────
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
             contentPadding = PaddingValues(top = 8.dp)
         ) {
-            items(filteredOccupancy) { occ ->
+            items(filteredOccupancy, key = { it.channel }) { occ ->
                 ChannelDetailRow(occ)
             }
         }

@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.coroutineContext
 
 class WifiScanner(private val context: Context) {
 
@@ -47,28 +46,49 @@ class WifiScanner(private val context: Context) {
 
     fun scanWifiNetworks(): Flow<List<WifiNetworkInfo>> = flow {
         while (true) {
-            @Suppress("MissingPermission")
-            wifiManager.startScan()
+            try {
+                @Suppress("MissingPermission")
+                wifiManager.startScan()
+            } catch (_: SecurityException) {
+                emit(emptyList())
+                delay(5000)
+                continue
+            } catch (_: Exception) {
+                delay(5000)
+                continue
+            }
+
             delay(3500)
 
-            @Suppress("MissingPermission")
-            val results = wifiManager.scanResults?.mapNotNull { scanResult ->
-                scanResultToNetworkInfo(scanResult)
-            }?.distinctBy { it.bssid }?.sortedByDescending { it.rssi } ?: emptyList()
+            try {
+                @Suppress("MissingPermission")
+                val results = wifiManager.scanResults?.mapNotNull { scanResult ->
+                    scanResultToNetworkInfo(scanResult)
+                }?.distinctBy { it.bssid }?.sortedByDescending { it.rssi } ?: emptyList()
 
-            emit(results)
+                emit(results)
+            } catch (_: SecurityException) {
+                emit(emptyList())
+            } catch (_: Exception) {
+                emit(emptyList())
+            }
+
             delay(15_000)
         }
     }.flowOn(Dispatchers.IO)
 
     @Suppress("MissingPermission")
     suspend fun singleScan(): List<WifiNetworkInfo> = withContext(Dispatchers.IO) {
-        wifiManager.startScan()
-        delay(3000)
-        wifiManager.scanResults?.mapNotNull { scanResultToNetworkInfo(it) }
-            ?.distinctBy { it.bssid }
-            ?.sortedByDescending { it.rssi }
-            ?: emptyList()
+        try {
+            wifiManager.startScan()
+            delay(3000)
+            wifiManager.scanResults?.mapNotNull { scanResultToNetworkInfo(it) }
+                ?.distinctBy { it.bssid }
+                ?.sortedByDescending { it.rssi }
+                ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     private fun scanResultToNetworkInfo(sr: android.net.wifi.ScanResult): WifiNetworkInfo? {
@@ -87,6 +107,8 @@ class WifiScanner(private val context: Context) {
     }
 
     fun computeChannelOccupancy(networks: List<WifiNetworkInfo>): List<ChannelOccupancy> {
+        if (networks.isEmpty()) return emptyList()
+
         val grouped = networks.groupBy { it.channel }
 
         return grouped.map { (channel, channelNetworks) ->
@@ -120,5 +142,11 @@ class WifiScanner(private val context: Context) {
         }.sortedBy { it.channel }
     }
 
-    fun isWifiEnabled(): Boolean = wifiManager.isWifiEnabled
+    fun isWifiEnabled(): Boolean {
+        return try {
+            wifiManager.isWifiEnabled
+        } catch (_: Exception) {
+            false
+        }
+    }
 }

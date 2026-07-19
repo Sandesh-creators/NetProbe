@@ -4,10 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.netprobe.diagnostics.data.model.ChannelOccupancy
-import com.netprobe.diagnostics.data.model.CongestionLevel
 import com.netprobe.diagnostics.data.model.WifiBand
 import com.netprobe.diagnostics.data.model.WifiNetworkInfo
-import com.netprobe.diagnostics.scanner.BleScanner
 import com.netprobe.diagnostics.scanner.WifiScanner
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +16,6 @@ import kotlinx.coroutines.launch
 class ChannelAnalyzerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val wifiScanner = WifiScanner(application)
-    private val bleScanner = BleScanner(application)
 
     private val _analyzerState = MutableStateFlow<AnalyzerState>(AnalyzerState.Idle)
     val analyzerState: StateFlow<AnalyzerState> = _analyzerState.asStateFlow()
@@ -32,7 +29,7 @@ class ChannelAnalyzerViewModel(application: Application) : AndroidViewModel(appl
         wifiScanJob?.cancel()
 
         if (!wifiScanner.isWifiEnabled()) {
-            _analyzerState.value = AnalyzerState.Error("Wi-Fi is disabled")
+            _analyzerState.value = AnalyzerState.Error("Wi-Fi is disabled. Enable Wi-Fi to scan.")
             return
         }
 
@@ -43,13 +40,21 @@ class ChannelAnalyzerViewModel(application: Application) : AndroidViewModel(appl
         )
 
         wifiScanJob = viewModelScope.launch {
-            wifiScanner.scanWifiNetworks().collect { networks ->
-                val occupancy = wifiScanner.computeChannelOccupancy(networks)
-                _analyzerState.value = AnalyzerState.Scanning(
-                    networks = networks,
-                    channelOccupancy = occupancy,
-                    bleChannelCount = estimateBleChannelCount()
-                )
+            try {
+                wifiScanner.scanWifiNetworks().collect { networks ->
+                    val occupancy = try {
+                        wifiScanner.computeChannelOccupancy(networks)
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                    _analyzerState.value = AnalyzerState.Scanning(
+                        networks = networks,
+                        channelOccupancy = occupancy,
+                        bleChannelCount = 3
+                    )
+                }
+            } catch (_: Exception) {
+                _analyzerState.value = AnalyzerState.Error("Scan failed. Check Wi-Fi and location permissions.")
             }
         }
     }
@@ -61,19 +66,6 @@ class ChannelAnalyzerViewModel(application: Application) : AndroidViewModel(appl
 
     fun selectBand(band: WifiBand?) {
         _selectedBand.value = band
-    }
-
-    /**
-     * BLE operates on channels 37-39 in the 2.4 GHz band.
-     * Channel 37 = 2402 MHz, Channel 38 = 2426 MHz, Channel 39 = 2480 MHz
-     * This is a rough estimate based on BLE scan activity.
-     */
-    private fun estimateBleChannelCount(): Int {
-        // BLE advertisement channels map to Wi-Fi channels:
-        // Ch 37 -> overlaps Wi-Fi Ch 1-6
-        // Ch 38 -> overlaps Wi-Fi Ch 6-11
-        // Ch 39 -> overlaps Wi-Fi Ch 11-14
-        return 3 // BLE uses 3 advertising channels
     }
 
     fun getFilteredOccupancy(occupancy: List<ChannelOccupancy>): List<ChannelOccupancy> {

@@ -159,7 +159,7 @@ fun BluetoothExplorerScreen(viewModel: BluetoothViewModel) {
             Icon(
                 imageVector = when (btState) {
                     is BluetoothState.Scanning -> Icons.Default.Stop
-                    else -> Icons.Default.BluetoothSearching
+                    else -> Icons.Default.Bluetooth
                 },
                 contentDescription = null
             )

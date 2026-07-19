@@ -3,21 +3,119 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Background circle -->
+    <path
+        android:fillColor="#0D0D0D"
+        android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0" />
+
+    <!-- Outer ring -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="1.5"
+        android:pathData="M54,54m-42,0a42,42 0,1 1,84 0a42,42 0,1 1,-84 0" />
+
+    <!-- Middle ring -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="1.2"
+        android:pathData="M54,54m-28,0a28,28 0,1 1,56 0a28,28 0,1 1,-56 0" />
+
+    <!-- Inner ring -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="1"
+        android:pathData="M54,54m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0" />
+
+    <!-- Center dot -->
     <path
         android:fillColor="#00FF41"
-        android:pathData="M54,30 L54,78 M30,54 L78,54 M38,38 L70,70 M70,38 L38,70" />
+        android:pathData="M54,54m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+
+    <!-- Crosshair lines -->
     <path
-        android:fillColor="#00FF41"
-        android:pathData="M54,24 a6,6 0 1,1 0.01,0 z"
-        android:strokeWidth="2"
-        android:strokeColor="#00FF41" />
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="0.8"
+        android:pathData="M54,12L54,38" />
     <path
-        android:fillColor="#00FF41"
-        android:pathData="M54,84 a6,6 0 1,1 0.01,0 z" />
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="0.8"
+        android:pathData="M54,70L54,96" />
     <path
-        android:fillColor="#00FF41"
-        android:pathData="M24,54 a6,6 0 1,1 0.01,0 z" />
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="0.8"
+        android:pathData="M12,54L38,54" />
     <path
-        android:fillColor="#00FF41"
-        android:pathData="M84,54 a6,6 0 1,1 0.01,0 z" />
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="0.8"
+        android:pathData="M70,54L96,54" />
+
+    <!-- Diagonal crosshair lines -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="0.5"
+        android:pathData="M24,24L42,42" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="0.5"
+        android:pathData="M66,66L84,84" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="0.5"
+        android:pathData="M84,24L66,42" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="0.5"
+        android:pathData="M24,84L42,66" />
+
+    <!-- Signal arc (top-right quadrant) -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:pathData="M68,30 A30,30 0,0,1 78,54" />
+
+    <!-- Signal dot at arc end -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M78,54m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
+
+    <!-- Small tick marks on outer ring -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,10L54,14" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,94L54,98" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M10,54L14,54" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00FF41"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M94,54L98,54" />
+
 </vector>
