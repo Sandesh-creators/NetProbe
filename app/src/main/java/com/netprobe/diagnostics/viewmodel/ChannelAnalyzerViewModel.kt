@@ -24,39 +24,72 @@ class ChannelAnalyzerViewModel(application: Application) : AndroidViewModel(appl
     val selectedBand: StateFlow<WifiBand?> = _selectedBand.asStateFlow()
 
     private var wifiScanJob: Job? = null
+    private var emptyScanCount = 0
 
     fun startContinuousScan() {
         wifiScanJob?.cancel()
+        emptyScanCount = 0
 
         val diag = wifiScanner.getDiagnostics()
-        if (diag != "OK") {
-            _analyzerState.value = AnalyzerState.Error(diag)
+        if (!diag.isOk()) {
+            _analyzerState.value = AnalyzerState.Error(
+                message = diag.issues.joinToString("\n") { "- $it" }
+            )
             return
         }
 
         _analyzerState.value = AnalyzerState.Scanning(
             networks = emptyList(),
             channelOccupancy = emptyList(),
-            bleChannelCount = 0
+            bleChannelCount = 0,
+            rawScanCount = 0,
+            lastError = null
         )
 
         wifiScanJob = viewModelScope.launch {
-            try {
-                wifiScanner.scanWifiNetworks().collect { networks ->
-                    val occupancy = try {
-                        wifiScanner.computeChannelOccupancy(networks)
-                    } catch (_: Exception) {
-                        emptyList()
-                    }
-                    _analyzerState.value = AnalyzerState.Scanning(
-                        networks = networks,
-                        channelOccupancy = occupancy,
-                        bleChannelCount = 3
-                    )
+            wifiScanner.scanWifiNetworks().collect { scanResult ->
+                val occupancy = try {
+                    wifiScanner.computeChannelOccupancy(scanResult.networks)
+                } catch (_: Exception) {
+                    emptyList()
                 }
-            } catch (_: Exception) {
-                _analyzerState.value = AnalyzerState.Error(
-                    "Scan failed. Check:\n- Wi-Fi enabled\n- Location services ON\n- Permissions granted"
+
+                if (scanResult.networks.isEmpty()) {
+                    emptyScanCount++
+                } else {
+                    emptyScanCount = 0
+                }
+
+                // After 3 consecutive empty scans, show error with diagnostics
+                if (emptyScanCount >= 3 && scanResult.networks.isEmpty()) {
+                    val errorMsg = buildString {
+                        appendLine("Scan returned 0 usable networks after $emptyScanCount attempts.")
+                        appendLine()
+                        if (scanResult.error != null) {
+                            appendLine("DIAGNOSTIC: ${scanResult.error}")
+                            appendLine()
+                        }
+                        appendLine("TROUBLESHOOTING:")
+                        appendLine("1. Ensure Wi-Fi is ON and connected")
+                        appendLine("2. Enable Location Services (Settings > Location > ON)")
+                        appendLine("3. Grant Location permission to this app")
+                        appendLine("4. Some devices need Wi-Fi scanning turned ON in")
+                        appendLine("   Settings > Location > Wi-Fi scanning")
+                        appendLine()
+                        appendLine("Raw scan results: ${scanResult.rawCount}")
+                        appendLine("After filtering: ${scanResult.filteredCount}")
+                    }
+                    _analyzerState.value = AnalyzerState.Error(errorMsg)
+                    wifiScanJob?.cancel()
+                    return@collect
+                }
+
+                _analyzerState.value = AnalyzerState.Scanning(
+                    networks = scanResult.networks,
+                    channelOccupancy = occupancy,
+                    bleChannelCount = 3,
+                    rawScanCount = scanResult.rawCount,
+                    lastError = scanResult.error
                 )
             }
         }
@@ -87,7 +120,9 @@ sealed class AnalyzerState {
     data class Scanning(
         val networks: List<WifiNetworkInfo>,
         val channelOccupancy: List<ChannelOccupancy>,
-        val bleChannelCount: Int
+        val bleChannelCount: Int,
+        val rawScanCount: Int = 0,
+        val lastError: String? = null
     ) : AnalyzerState()
     data class Error(val message: String) : AnalyzerState()
 }

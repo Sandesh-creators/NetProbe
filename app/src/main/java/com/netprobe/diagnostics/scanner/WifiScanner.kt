@@ -21,11 +21,6 @@ class WifiScanner(private val context: Context) {
     private val locationManager =
         context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
-    /**
-     * On Android 10+, Wi-Fi scan results only contain SSID and frequency
-     * when Location Services (the device GPS toggle) are enabled.
-     * This is separate from the ACCESS_FINE_LOCATION permission.
-     */
     fun isLocationEnabled(): Boolean {
         return try {
             locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
@@ -35,12 +30,28 @@ class WifiScanner(private val context: Context) {
         }
     }
 
-    fun getDiagnostics(): String {
+    fun isWifiEnabled(): Boolean {
+        return try {
+            @Suppress("DEPRECATION")
+            wifiManager.isWifiEnabled
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun getDiagnostics(): ScanDiagnostics {
         val issues = mutableListOf<String>()
-        if (!isWifiEnabled()) issues.add("Wi-Fi disabled")
-        if (!isLocationEnabled()) issues.add("Location services disabled")
-        if (issues.isEmpty()) return "OK"
-        return issues.joinToString(", ")
+        val isWifi = isWifiEnabled()
+        val isLoc = isLocationEnabled()
+
+        if (!isWifi) issues.add("Wi-Fi is OFF")
+        if (!isLoc) issues.add("Location services are OFF")
+
+        return ScanDiagnostics(
+            isWifiEnabled = isWifi,
+            isLocationEnabled = isLoc,
+            issues = issues
+        )
     }
 
     fun frequencyToChannel(frequencyMhz: Int): Pair<Int, WifiBand> {
@@ -69,61 +80,111 @@ class WifiScanner(private val context: Context) {
         return "Ch $channel (${frequencyMhz} MHz \u00B7 ${band.displayName})"
     }
 
-    fun scanWifiNetworks(): Flow<List<WifiNetworkInfo>> = flow {
+    /**
+     * Emits scan results with full diagnostic info so the caller can
+     * distinguish between "scan ran but found nothing" vs "scan failed".
+     */
+    fun scanWifiNetworks(): Flow<WifiScanResult> = flow {
+        var consecutiveEmpty = 0
+
         while (true) {
-            try {
-                @Suppress("MissingPermission")
-                val scanStarted = wifiManager.startScan()
-                if (!scanStarted) {
-                    emit(emptyList())
-                    delay(15_000)
-                    continue
-                }
-            } catch (_: SecurityException) {
-                emit(emptyList())
-                delay(5_000)
-                continue
-            } catch (_: Exception) {
-                delay(5_000)
-                continue
+            val scanEvent = doSingleScan()
+            emit(scanEvent)
+
+            if (scanEvent.networks.isEmpty()) {
+                consecutiveEmpty++
+            } else {
+                consecutiveEmpty = 0
             }
 
-            delay(4000)
-
-            try {
-                @Suppress("MissingPermission")
-                val results = wifiManager.scanResults?.mapNotNull { scanResult ->
-                    scanResultToNetworkInfo(scanResult)
-                }?.distinctBy { it.bssid }?.sortedByDescending { it.rssi } ?: emptyList()
-
-                emit(results)
-            } catch (_: SecurityException) {
-                emit(emptyList())
-            } catch (_: Exception) {
-                emit(emptyList())
-            }
-
-            delay(15_000)
+            // Throttle delay: shorter if scan is working, longer if repeatedly empty
+            val delayMs = if (consecutiveEmpty >= 3) 15_000L else 4_000L
+            delay(delayMs)
         }
     }.flowOn(Dispatchers.IO)
 
-    @Suppress("MissingPermission")
-    suspend fun singleScan(): List<WifiNetworkInfo> {
+    private suspend fun doSingleScan(): WifiScanResult {
+        // Pre-check
+        val diag = getDiagnostics()
+        if (!diag.isOk()) {
+            return WifiScanResult(
+                networks = emptyList(),
+                rawCount = 0,
+                filteredCount = 0,
+                error = "Pre-check failed: ${diag.issues.joinToString("; ")}"
+            )
+        }
+
+        // Trigger scan
+        var scanStarted = false
+        try {
+            @Suppress("MissingPermission")
+            scanStarted = wifiManager.startScan()
+        } catch (e: SecurityException) {
+            return WifiScanResult(
+                networks = emptyList(), rawCount = 0, filteredCount = 0,
+                error = "Missing permission: ${e.message}"
+            )
+        } catch (e: Exception) {
+            return WifiScanResult(
+                networks = emptyList(), rawCount = 0, filteredCount = 0,
+                error = "startScan() exception: ${e.message}"
+            )
+        }
+
+        if (!scanStarted) {
+            return WifiScanResult(
+                networks = emptyList(), rawCount = 0, filteredCount = 0,
+                error = "Scan throttled by Android (startScan returned false)"
+            )
+        }
+
+        // Wait for results
+        delay(4000)
+
+        // Read results
         return try {
-            wifiManager.startScan()
-            delay(4000)
-            wifiManager.scanResults?.mapNotNull { scanResultToNetworkInfo(it) }
-                ?.distinctBy { it.bssid }
-                ?.sortedByDescending { it.rssi }
-                ?: emptyList()
-        } catch (_: Exception) {
-            emptyList()
+            @Suppress("MissingPermission")
+            val rawResults = wifiManager.scanResults
+            if (rawResults == null) {
+                return WifiScanResult(
+                    networks = emptyList(), rawCount = 0, filteredCount = 0,
+                    error = "scanResults is null"
+                )
+            }
+
+            val rawCount = rawResults.size
+            val mapped = rawResults.mapNotNull { sr -> scanResultToNetworkInfo(sr) }
+            val filtered = mapped.distinctBy { it.bssid }.sortedByDescending { it.rssi }
+
+            val error = if (rawCount > 0 && filtered.isEmpty()) {
+                "Scan returned $rawCount results but all had 0 frequency (Location Services may be needed for channel data)"
+            } else if (rawCount == 0) {
+                "Scan returned 0 APs — no networks visible"
+            } else {
+                null
+            }
+
+            WifiScanResult(
+                networks = filtered,
+                rawCount = rawCount,
+                filteredCount = filtered.size,
+                error = error
+            )
+        } catch (e: SecurityException) {
+            WifiScanResult(
+                networks = emptyList(), rawCount = 0, filteredCount = 0,
+                error = "Permission denied reading scan results: ${e.message}"
+            )
+        } catch (e: Exception) {
+            WifiScanResult(
+                networks = emptyList(), rawCount = 0, filteredCount = 0,
+                error = "Exception reading scan results: ${e.message}"
+            )
         }
     }
 
     private fun scanResultToNetworkInfo(sr: android.net.wifi.ScanResult): WifiNetworkInfo? {
-        // Use SSID if available, otherwise fall back to BSSID so we still
-        // capture networks even when location is off (SSID will be "<unknown ssid>")
         val ssid = sr.SSID?.takeIf { it.isNotEmpty() && it != "<unknown ssid>" }
             ?: sr.BSSID?.takeIf { it.isNotEmpty() }
             ?: return null
@@ -179,12 +240,19 @@ class WifiScanner(private val context: Context) {
             )
         }.sortedBy { it.channel }
     }
-
-    fun isWifiEnabled(): Boolean {
-        return try {
-            wifiManager.isWifiEnabled
-        } catch (_: Exception) {
-            false
-        }
-    }
 }
+
+data class ScanDiagnostics(
+    val isWifiEnabled: Boolean,
+    val isLocationEnabled: Boolean,
+    val issues: List<String>
+) {
+    fun isOk() = issues.isEmpty()
+}
+
+data class WifiScanResult(
+    val networks: List<WifiNetworkInfo>,
+    val rawCount: Int,
+    val filteredCount: Int,
+    val error: String? = null
+)

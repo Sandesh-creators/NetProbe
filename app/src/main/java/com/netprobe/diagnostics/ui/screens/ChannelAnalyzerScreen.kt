@@ -52,10 +52,14 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
                 is AnalyzerState.Scanning -> (analyzerState as AnalyzerState.Scanning).networks.size
                 else -> 0
             }
+            val rawCount = when (analyzerState) {
+                is AnalyzerState.Scanning -> (analyzerState as AnalyzerState.Scanning).rawScanCount
+                else -> 0
+            }
             Text(
-                text = "$networkCount APs",
+                text = if (rawCount > 0 && networkCount != rawCount) "$networkCount APs (${rawCount} raw)" else "$networkCount APs",
                 style = MaterialTheme.typography.labelMedium,
-                color = TerminalAmber
+                color = if (networkCount == 0 && rawCount > 0) TerminalAmber else TerminalAmber
             )
         }
 
@@ -85,7 +89,7 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
                         Icon(Icons.Default.Warning, contentDescription = null, tint = TerminalRed, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "DIAGNOSTIC FAILURE",
+                            text = "SCAN FAILED",
                             style = MaterialTheme.typography.labelLarge,
                             color = TerminalRed
                         )
@@ -96,22 +100,6 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "REQUIRED FOR CHANNEL SCANNING:",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TerminalAmber
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    ChecklistItem("Wi-Fi enabled", "Toggle Wi-Fi in quick settings")
-                    ChecklistItem("Location services ON", "Settings > Location > Toggle ON")
-                    ChecklistItem("Location permission granted", "App info > Permissions > Location > Allow")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "NOTE: Android 10+ requires Location Services (GPS toggle) to be ON for Wi-Fi scan results to include frequency/channel data. This is separate from the location permission.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextDisabled
-                    )
                 }
             }
         }
@@ -119,6 +107,28 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
         val occupancy = when (analyzerState) {
             is AnalyzerState.Scanning -> (analyzerState as AnalyzerState.Scanning).channelOccupancy
             else -> emptyList()
+        }
+
+        val scanInfo = when (analyzerState) {
+            is AnalyzerState.Scanning -> analyzerState as AnalyzerState.Scanning
+            else -> null
+        }
+
+        if (scanInfo != null && scanInfo.lastError != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = TerminalAmber.copy(alpha = 0.08f)),
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = scanInfo.lastError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TerminalAmber,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
         }
 
         val filteredOccupancy = remember(occupancy, selectedBand) {
@@ -149,6 +159,7 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
                 }
             }
         } else if (analyzerState is AnalyzerState.Scanning) {
+            val info = analyzerState as AnalyzerState.Scanning
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -158,7 +169,11 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = TerminalAmber, strokeWidth = 2.dp, modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Scanning spectrum...", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    if (info.lastError != null) {
+                        Text("Retrying scan...", style = MaterialTheme.typography.bodySmall, color = TerminalAmber)
+                    } else {
+                        Text("Scanning spectrum...", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    }
                 }
             }
         }
@@ -223,21 +238,6 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
                 style = MaterialTheme.typography.labelLarge,
                 color = SurfaceDark
             )
-        }
-    }
-}
-
-@Composable
-private fun ChecklistItem(label: String, detail: String) {
-    Row(
-        modifier = Modifier.padding(vertical = 2.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        Text("  ", style = MaterialTheme.typography.bodySmall, color = TextDisabled)
-        Text("\u2022 ", style = MaterialTheme.typography.bodySmall, color = TerminalAmber)
-        Column {
-            Text(label, style = MaterialTheme.typography.bodySmall, color = TextPrimary, fontWeight = FontWeight.Bold)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = TextDisabled)
         }
     }
 }

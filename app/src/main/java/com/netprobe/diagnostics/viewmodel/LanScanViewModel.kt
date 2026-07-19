@@ -167,45 +167,69 @@ class LanScanViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openSshInTermux(host: String, port: Int = 22) {
-        // Try Termux RUN_COMMAND first (most reliable for Termux users)
+        val sshCmd = "/data/data/com.termux/files/usr/bin/ssh -p $port $host"
+
+        // 1. Try implicit intent — let Android resolve the correct Termux activity
         try {
-            val termuxIntent = Intent("com.termux.RUN_COMMAND").apply {
-                setClassName("com.termux", "com.termux.RunCommandActivity")
+            val intent = Intent("com.termux.RUN_COMMAND").apply {
                 putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/ssh")
                 putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-p", "$port", host))
                 putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
-                putExtra("com.termux.RUN_COMMAND_SESSION_NAME", "ssh_$host")
+                putExtra("com.termux.RUN_COMMAND_SESSION_NAME", "ssh_${host.replace(".", "_")}")
                 putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
-            context.startActivity(termuxIntent)
-            return
-        } catch (_: Exception) { }
-
-        // Fallback 1: Generic ssh:// URI (JuiceSSH, ConnectBot, etc.)
-        try {
-            val sshUri = Uri.Builder()
-                .scheme("ssh")
-                .appendEncodedPath("$host:$port")
-                .build()
-            val intent = Intent(Intent.ACTION_VIEW, sshUri)
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
             context.startActivity(intent)
             return
         } catch (_: Exception) { }
 
-        // Fallback 2: Try launching Termux app directly
+        // 2. Try explicit intent with com.termux.app.RunCommandActivity (correct package path)
+        try {
+            val intent = Intent("com.termux.RUN_COMMAND").apply {
+                setClassName("com.termux", "com.termux.app.RunCommandActivity")
+                putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/ssh")
+                putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-p", "$port", host))
+                putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+                putExtra("com.termux.RUN_COMMAND_SESSION_NAME", "ssh_${host.replace(".", "_")}")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            return
+        } catch (_: Exception) { }
+
+        // 3. Try Termux:RunCommand addon activity name
+        try {
+            val intent = Intent("com.termux.RUN_COMMAND").apply {
+                setClassName("com.termux", "com.termux.RunCommandActivity")
+                putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/ssh")
+                putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-p", "$port", host))
+                putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            return
+        } catch (_: Exception) { }
+
+        // 4. Open Termux directly (user runs command manually)
         try {
             val launchIntent = context.packageManager.getLaunchIntentForPackage("com.termux")
             if (launchIntent != null) {
                 launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 context.startActivity(launchIntent)
-                _toastMessage.value = "Termux opened — run: ssh -p $port $host"
+                _toastMessage.value = "Paste in Termux: $sshCmd"
                 return
             }
         } catch (_: Exception) { }
 
-        _toastMessage.value = "No SSH client found. Install Termux (run 'pkg install openssh' inside it)."
+        // 5. Try generic ssh:// URI (JuiceSSH, ConnectBot, etc.)
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("ssh://$host:$port"))
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            context.startActivity(intent)
+            return
+        } catch (_: Exception) { }
+
+        _toastMessage.value = "No SSH client found. Install Termux, then run: pkg install openssh"
     }
 
     fun clearToast() {
