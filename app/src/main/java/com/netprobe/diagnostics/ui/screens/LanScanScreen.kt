@@ -41,6 +41,7 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
     val pingState by viewModel.pingState.collectAsState()
     val tracerouteState by viewModel.tracerouteState.collectAsState()
     val toastMessage by viewModel.toastMessage.collectAsState()
+    val sshDialogState by viewModel.sshDialogState.collectAsState()
     val context = LocalContext.current
 
     var selectedHost by remember { mutableStateOf<HostInfo?>(null) }
@@ -50,6 +51,62 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearToast()
         }
+    }
+
+    if (sshDialogState is SshDialogState.Showing) {
+        val apps = (sshDialogState as SshDialogState.Showing).apps
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissSshDialog() },
+            containerColor = SurfaceCardDark,
+            titleContentColor = TerminalAmber,
+            textContentColor = TextSecondary,
+            title = { Text("> SSH CLIENT REQUIRED") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "No SSH client found on this device. Install one to connect directly from NetProbe.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextDisabled
+                    )
+                    Text(
+                        text = "Installed apps will auto-launch when you tap SSH IN.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextDisabled
+                    )
+                    HorizontalDivider(color = SurfaceOverlay)
+                    apps.forEach { app ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    viewModel.openInstallUrl(app.installUrl)
+                                    viewModel.dismissSshDialog()
+                                }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = app.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TerminalCyan
+                            )
+                            Text(
+                                text = "INSTALL",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TerminalGreen
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissSshDialog() }) {
+                    Text("CLOSE", color = TerminalAmber)
+                }
+            }
+        )
     }
 
     Column(
@@ -203,7 +260,7 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
                             onPortScan = { viewModel.startPortScan(host.ip) },
                             onPing = { viewModel.startPing(host.ip) },
                             onStopPing = { viewModel.stopPing() },
-                            onSsh = { viewModel.openSshInTermux(host.ip) },
+                            onSsh = { viewModel.openSsh(host.ip) },
                             onTraceroute = { viewModel.startTraceroute(host.ip) },
                             hasSsh = hasSsh,
                             openPortsCount = openCount,

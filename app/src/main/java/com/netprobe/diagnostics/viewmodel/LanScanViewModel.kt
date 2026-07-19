@@ -2,6 +2,7 @@ package com.netprobe.diagnostics.viewmodel
 
 import android.app.Application
 import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.netprobe.diagnostics.data.db.AppDatabase
@@ -14,6 +15,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+data class SshApp(
+    val id: String,
+    val name: String,
+    val packageName: String,
+    val installUrl: String
+)
+
+private val KNOWN_SSH_APPS = listOf(
+    SshApp("termux", "Termux", "com.termux", "https://f-droid.org/en/packages/com.termux/"),
+    SshApp("juicessh", "JuiceSSH", "com.sonelli.juicessh", "https://play.google.com/store/apps/details?id=com.sonelli.juicessh"),
+    SshApp("connectbot", "ConnectBot", "org.connectbot", "https://play.google.com/store/apps/details?id=org.connectbot"),
+    SshApp("termius", "Termius", "com.techvss.termius", "https://play.google.com/store/apps/details?id=com.techvss.termius"),
+    SshApp("serverauditor", "Server Auditor", "com.server.auditor.server.auditor", "https://play.google.com/store/apps/details?id=com.server.auditor.server.auditor"),
+    SshApp("sshclient", "SSH Client", "com.westcliin.sshclient", "https://play.google.com/store/apps/details?id=com.westcliin.sshclient"),
+)
 
 class LanScanViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -38,6 +55,9 @@ class LanScanViewModel(application: Application) : AndroidViewModel(application)
 
     private val _toastMessage = MutableStateFlow<String?>(null)
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
+
+    private val _sshDialogState = MutableStateFlow<SshDialogState>(SshDialogState.Hidden)
+    val sshDialogState: StateFlow<SshDialogState> = _sshDialogState.asStateFlow()
 
     private var scanJob: Job? = null
     private var portScanJob: Job? = null
@@ -165,17 +185,60 @@ class LanScanViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun openSshInTermux(host: String, port: Int = 22) {
-        val cmd = "ssh -p $port $host"
+    fun openSsh(host: String, port: Int = 22) {
+        val installedApps = KNOWN_SSH_APPS.filter { app ->
+            try {
+                context.packageManager.getPackageInfo(app.packageName, 0)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
 
-        // Copy command to clipboard
+        if (installedApps.isEmpty()) {
+            _sshDialogState.value = SshDialogState.Showing(KNOWN_SSH_APPS)
+            return
+        }
+
+        val preferred = installedApps.firstOrNull { it.id == "termux" }
+            ?: installedApps.firstOrNull { it.id == "juicessh" }
+            ?: installedApps.firstOrNull { it.id == "connectbot" }
+            ?: installedApps.first()
+
+        when (preferred.id) {
+            "termux" -> openTermux(host, port, installedApps)
+            "juicessh" -> openSshUri("ssh://$host:$port", preferred, installedApps)
+            "connectbot" -> openSshUri("ssh://$host:$port", preferred, installedApps)
+            "termius" -> openSshUri("ssh://$host:$port", preferred, installedApps)
+            "serverauditor" -> openSshUri("ssh://$host:$port", preferred, installedApps)
+            else -> openSshUri("ssh://$host:$port", preferred, installedApps)
+        }
+    }
+
+    private fun openTermux(host: String, port: Int, installedApps: List<SshApp>) {
+        val cmd = if (port == 22) "ssh $host" else "ssh -p $port $host"
+
+        // Try Termux RUN_COMMAND intent (executes directly without clipboard)
+        try {
+            val intent = Intent("com.termux.RUN_COMMAND").apply {
+                setClassName("com.termux", "com.termux.app.RunCommandActivity")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/ssh")
+                putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-p", port.toString(), host))
+                putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+            }
+            context.startActivity(intent)
+            _toastMessage.value = "Opening SSH in Termux"
+            return
+        } catch (_: Exception) { }
+
+        // Fallback: copy to clipboard + launch Termux
         try {
             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             val clip = android.content.ClipData.newPlainText("ssh", cmd)
             clipboard.setPrimaryClip(clip)
         } catch (_: Exception) { }
 
-        // Open Termux
         try {
             val intent = context.packageManager.getLaunchIntentForPackage("com.termux")
             if (intent != null) {
@@ -186,7 +249,46 @@ class LanScanViewModel(application: Application) : AndroidViewModel(application)
             }
         } catch (_: Exception) { }
 
-        _toastMessage.value = "Install Termux to use SSH"
+        _sshDialogState.value = SshDialogState.Showing(installedApps)
+    }
+
+    private fun openSshUri(uriString: String, app: SshApp, installedApps: List<SshApp>) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriString)).apply {
+                setPackage(app.packageName)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            _toastMessage.value = "Opening SSH in ${app.name}"
+            return
+        } catch (_: Exception) { }
+
+        try {
+            val intent = context.packageManager.getLaunchIntentForPackage(app.packageName)
+            if (intent != null) {
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                context.startActivity(intent)
+                _toastMessage.value = "Opened ${app.name} — connect manually to SSH"
+                return
+            }
+        } catch (_: Exception) { }
+
+        _sshDialogState.value = SshDialogState.Showing(installedApps)
+    }
+
+    fun dismissSshDialog() {
+        _sshDialogState.value = SshDialogState.Hidden
+    }
+
+    fun openInstallUrl(url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            _toastMessage.value = "Could not open install link"
+        }
     }
 
     fun clearToast() {
@@ -258,4 +360,9 @@ sealed class TracerouteViewState {
         val targetIp: String,
         val hops: List<TracerouteHop>
     ) : TracerouteViewState()
+}
+
+sealed class SshDialogState {
+    data object Hidden : SshDialogState()
+    data class Showing(val apps: List<SshApp>) : SshDialogState()
 }
