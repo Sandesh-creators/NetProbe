@@ -617,7 +617,7 @@ private fun PortScanPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "> PORT SCAN: ${(portScanState as? PortScanState.Scanning)?.targetIp ?: (portScanState as PortScanState.Complete).targetIp}",
+                text = "> PORT SCAN: ${(portScanState as? PortScanState.Scanning)?.targetIp ?: (portScanState as? PortScanState.Complete)?.targetIp ?: ""}",
                 style = MaterialTheme.typography.labelLarge,
                 color = TerminalAmber
             )
