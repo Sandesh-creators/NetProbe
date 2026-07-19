@@ -46,6 +46,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- ═══════════════════════════════════════════════════════════════════
+         TERMUX: Required to launch SSH commands via Termux RUN_COMMAND
+         ═══════════════════════════════════════════════════════════════════ -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
          HARDWARE FEATURE DECLARATIONS
          Using required="false" so the app can install on devices without
          these features and gracefully degrade.

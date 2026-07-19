@@ -3,7 +3,6 @@ package com.netprobe.diagnostics.viewmodel
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
-import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.netprobe.diagnostics.data.db.AppDatabase
@@ -16,7 +15,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.io.File
 
 class LanScanViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -169,26 +167,45 @@ class LanScanViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openSshInTermux(host: String, port: Int = 22) {
+        // Try Termux RUN_COMMAND first (most reliable for Termux users)
         try {
-            // Try Termux first (com.termux)
-            val termuxIntent = Intent(Intent.ACTION_VIEW).apply {
-                setClassName("com.termux", "com.termux.app.RunCommandService")
+            val termuxIntent = Intent("com.termux.RUN_COMMAND").apply {
+                setClassName("com.termux", "com.termux.RunCommandActivity")
                 putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/ssh")
                 putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-p", "$port", host))
                 putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+                putExtra("com.termux.RUN_COMMAND_SESSION_NAME", "ssh_$host")
+                putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
             context.startActivity(termuxIntent)
-        } catch (_: Exception) {
-            try {
-                // Fallback: use generic SSH URI scheme
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("ssh://root@$host:$port"))
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                context.startActivity(intent)
-            } catch (_: Exception) {
-                _toastMessage.value = "No SSH client found. Install Termux or JuiceSSH."
+            return
+        } catch (_: Exception) { }
+
+        // Fallback 1: Generic ssh:// URI (JuiceSSH, ConnectBot, etc.)
+        try {
+            val sshUri = Uri.Builder()
+                .scheme("ssh")
+                .appendEncodedPath("$host:$port")
+                .build()
+            val intent = Intent(Intent.ACTION_VIEW, sshUri)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            context.startActivity(intent)
+            return
+        } catch (_: Exception) { }
+
+        // Fallback 2: Try launching Termux app directly
+        try {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage("com.termux")
+            if (launchIntent != null) {
+                launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                context.startActivity(launchIntent)
+                _toastMessage.value = "Termux opened — run: ssh -p $port $host"
+                return
             }
-        }
+        } catch (_: Exception) { }
+
+        _toastMessage.value = "No SSH client found. Install Termux (run 'pkg install openssh' inside it)."
     }
 
     fun clearToast() {
