@@ -13,8 +13,8 @@ android {
         applicationId = "com.netprobe.diagnostics"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "2.1.0"
+        versionCode = 5
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -23,10 +23,20 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("${rootProject.projectDir}/netprobe-release.jks")
+            storePassword = System.getenv("KEYSTORE_PASS") ?: "Nu!!A\$tr0!!01"
+            keyAlias = "netprobe"
+            keyPassword = System.getenv("KEYSTORE_PASS") ?: "Nu!!A\$tr0!!01"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
