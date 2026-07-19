@@ -186,14 +186,7 @@ class LanScanViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openSsh(host: String, port: Int = 22) {
-        val installedApps = KNOWN_SSH_APPS.filter { app ->
-            try {
-                context.packageManager.getPackageInfo(app.packageName, 0)
-                true
-            } catch (_: Exception) {
-                false
-            }
-        }
+        val installedApps = KNOWN_SSH_APPS.filter { isPackageInstalled(it.packageName) }
 
         if (installedApps.isEmpty()) {
             _sshDialogState.value = SshDialogState.Showing(KNOWN_SSH_APPS)
@@ -207,11 +200,26 @@ class LanScanViewModel(application: Application) : AndroidViewModel(application)
 
         when (preferred.id) {
             "termux" -> openTermux(host, port, installedApps)
-            "juicessh" -> openSshUri("ssh://$host:$port", preferred, installedApps)
-            "connectbot" -> openSshUri("ssh://$host:$port", preferred, installedApps)
-            "termius" -> openSshUri("ssh://$host:$port", preferred, installedApps)
-            "serverauditor" -> openSshUri("ssh://$host:$port", preferred, installedApps)
             else -> openSshUri("ssh://$host:$port", preferred, installedApps)
+        }
+    }
+
+    private fun isPackageInstalled(packageName: String): Boolean {
+        return try {
+            val pm = context.packageManager
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(packageName, 0)
+            }
+            true
+        } catch (_: Exception) {
+            try {
+                context.packageManager.getLaunchIntentForPackage(packageName) != null
+            } catch (_: Exception) {
+                false
+            }
         }
     }
 
