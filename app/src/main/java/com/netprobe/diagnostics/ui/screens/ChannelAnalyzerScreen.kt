@@ -44,7 +44,7 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "> CHANNEL ANALYSIS",
+                text = "> SPECTRUM ANALYSIS",
                 style = MaterialTheme.typography.titleMedium,
                 color = TerminalAmber
             )
@@ -70,30 +70,52 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             BandChip("5 GHz", selectedBand == WifiBand.BAND_5_GHZ) { viewModel.selectBand(WifiBand.BAND_5_GHZ) }
         }
 
-        // ── Error State ───────────────────────────────────────
         if (analyzerState is AnalyzerState.Error) {
-            Box(
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(TerminalRed.copy(alpha = 0.1f))
-                    .border(1.dp, TerminalRed.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
+                    .padding(bottom = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = TerminalRed.copy(alpha = 0.08f)),
+                shape = RoundedCornerShape(6.dp)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = TerminalRed)
+                Column(
+                    modifier = Modifier.padding(14.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = TerminalRed, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "DIAGNOSTIC FAILURE",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = TerminalRed
+                        )
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = (analyzerState as AnalyzerState.Error).message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TerminalRed
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "REQUIRED FOR CHANNEL SCANNING:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TerminalAmber
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    ChecklistItem("Wi-Fi enabled", "Toggle Wi-Fi in quick settings")
+                    ChecklistItem("Location services ON", "Settings > Location > Toggle ON")
+                    ChecklistItem("Location permission granted", "App info > Permissions > Location > Allow")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "NOTE: Android 10+ requires Location Services (GPS toggle) to be ON for Wi-Fi scan results to include frequency/channel data. This is separate from the location permission.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextDisabled
                     )
                 }
             }
         }
 
-        // ── Congestion Chart ──────────────────────────────────
         val occupancy = when (analyzerState) {
             is AnalyzerState.Scanning -> (analyzerState as AnalyzerState.Scanning).channelOccupancy
             else -> emptyList()
@@ -126,9 +148,21 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
                     CongestionLegend()
                 }
             }
+        } else if (analyzerState is AnalyzerState.Scanning) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = TerminalAmber, strokeWidth = 2.dp, modifier = Modifier.size(32.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Scanning spectrum...", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                }
+            }
         }
 
-        // ── BLE Note ──────────────────────────────────────────
         if (selectedBand == null || selectedBand == WifiBand.BAND_2_4_GHZ) {
             Card(
                 modifier = Modifier
@@ -141,12 +175,7 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
                     modifier = Modifier.padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = null,
-                        tint = TerminalCyan,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Icon(Icons.Default.Info, contentDescription = null, tint = TerminalCyan, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "BLE ADV on Ch 37/38/39 (2402/2426/2480 MHz) overlaps Wi-Fi Ch 1-13",
@@ -157,7 +186,6 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             }
         }
 
-        // ── Channel List ──────────────────────────────────────
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -168,7 +196,6 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
             }
         }
 
-        // ── Scan Button ───────────────────────────────────────
         Button(
             onClick = {
                 when (analyzerState) {
@@ -184,7 +211,7 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
                 containerColor = if (analyzerState is AnalyzerState.Scanning) TerminalRed else TerminalAmber,
                 contentColor = SurfaceDark
             ),
-            shape = RoundedCornerShape(4.dp)
+            shape = RoundedCornerShape(6.dp)
         ) {
             Icon(
                 imageVector = if (analyzerState is AnalyzerState.Scanning) Icons.Default.Stop else Icons.Default.Wifi,
@@ -196,6 +223,21 @@ fun ChannelAnalyzerScreen(viewModel: ChannelAnalyzerViewModel) {
                 style = MaterialTheme.typography.labelLarge,
                 color = SurfaceDark
             )
+        }
+    }
+}
+
+@Composable
+private fun ChecklistItem(label: String, detail: String) {
+    Row(
+        modifier = Modifier.padding(vertical = 2.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text("  ", style = MaterialTheme.typography.bodySmall, color = TextDisabled)
+        Text("\u2022 ", style = MaterialTheme.typography.bodySmall, color = TerminalAmber)
+        Column {
+            Text(label, style = MaterialTheme.typography.bodySmall, color = TextPrimary, fontWeight = FontWeight.Bold)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = TextDisabled)
         }
     }
 }

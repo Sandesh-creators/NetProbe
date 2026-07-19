@@ -129,7 +129,7 @@ private fun TopStatusBar() {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "v1.0",
+                text = "v1.1",
                 style = MaterialTheme.typography.labelSmall,
                 color = TextDisabled
             )

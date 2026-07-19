@@ -28,8 +28,9 @@ class ChannelAnalyzerViewModel(application: Application) : AndroidViewModel(appl
     fun startContinuousScan() {
         wifiScanJob?.cancel()
 
-        if (!wifiScanner.isWifiEnabled()) {
-            _analyzerState.value = AnalyzerState.Error("Wi-Fi is disabled. Enable Wi-Fi to scan.")
+        val diag = wifiScanner.getDiagnostics()
+        if (diag != "OK") {
+            _analyzerState.value = AnalyzerState.Error(diag)
             return
         }
 
@@ -54,7 +55,9 @@ class ChannelAnalyzerViewModel(application: Application) : AndroidViewModel(appl
                     )
                 }
             } catch (_: Exception) {
-                _analyzerState.value = AnalyzerState.Error("Scan failed. Check Wi-Fi and location permissions.")
+                _analyzerState.value = AnalyzerState.Error(
+                    "Scan failed. Check:\n- Wi-Fi enabled\n- Location services ON\n- Permissions granted"
+                )
             }
         }
     }

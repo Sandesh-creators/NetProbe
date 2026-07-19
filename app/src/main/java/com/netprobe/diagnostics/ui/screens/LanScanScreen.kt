@@ -1,6 +1,8 @@
 package com.netprobe.diagnostics.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -18,11 +20,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.netprobe.diagnostics.data.model.HostInfo
 import com.netprobe.diagnostics.data.model.PortInfo
-import com.netprobe.diagnostics.data.model.PortState
+import com.netprobe.diagnostics.scanner.TracerouteHop
 import com.netprobe.diagnostics.ui.theme.*
 import com.netprobe.diagnostics.viewmodel.*
 
@@ -31,8 +34,18 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
     val scanState by viewModel.scanState.collectAsState()
     val portScanState by viewModel.portScanState.collectAsState()
     val pingState by viewModel.pingState.collectAsState()
+    val tracerouteState by viewModel.tracerouteState.collectAsState()
+    val toastMessage by viewModel.toastMessage.collectAsState()
+    val context = LocalContext.current
 
     var selectedHost by remember { mutableStateOf<HostInfo?>(null) }
+
+    LaunchedEffect(toastMessage) {
+        toastMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearToast()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -40,7 +53,6 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
             .background(SurfaceDark)
             .padding(horizontal = 12.dp)
     ) {
-        // ── Header ────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -64,7 +76,6 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
             )
         }
 
-        // ── Network Info Bar ──────────────────────────────────
         AnimatedVisibility(visible = scanState is LanScanState.Scanning || scanState is LanScanState.Complete) {
             val info = when (scanState) {
                 is LanScanState.Scanning -> "SUBNET: ${(scanState as LanScanState.Scanning).subnet}  GW: ${(scanState as LanScanState.Scanning).gateway}"
@@ -75,19 +86,32 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 8.dp)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(SurfaceCardDark)
                     .padding(10.dp)
             ) {
+                Text(text = info, style = MaterialTheme.typography.bodySmall, color = TerminalCyan)
+            }
+        }
+
+        if (scanState is LanScanState.Error) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(TerminalRed.copy(alpha = 0.1f))
+                    .border(1.dp, TerminalRed.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                    .padding(12.dp)
+            ) {
                 Text(
-                    text = info,
+                    text = (scanState as LanScanState.Error).message,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TerminalCyan
+                    color = TerminalRed
                 )
             }
         }
 
-        // ── Scan Progress ─────────────────────────────────────
         if (scanState is LanScanState.Scanning) {
             val s = scanState as LanScanState.Scanning
             LinearProgressIndicator(
@@ -108,7 +132,6 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // ── Host List ─────────────────────────────────────────
         val hosts = when (scanState) {
             is LanScanState.Scanning -> (scanState as LanScanState.Scanning).aliveHosts
             is LanScanState.Complete -> (scanState as LanScanState.Complete).aliveHosts
@@ -121,6 +144,14 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             items(hosts, key = { it.ip }) { host ->
+                val hasSsh = portScanState.let { ps ->
+                    (ps as? PortScanState.Complete)?.let {
+                        it.targetIp == host.ip && it.openPorts.any { p -> p.port == 22 }
+                    } == true || (ps as? PortScanState.Scanning)?.let {
+                        it.targetIp == host.ip && it.openPorts.any { p -> p.port == 22 }
+                    } == true
+                }
+
                 HostRow(
                     host = host,
                     isSelected = selectedHost?.ip == host.ip,
@@ -128,15 +159,25 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
                     onPortScan = { viewModel.startPortScan(host.ip) },
                     onPing = { viewModel.startPing(host.ip) },
                     onStopPing = { viewModel.stopPing() },
+                    onSsh = { viewModel.openSshInTermux(host.ip) },
+                    onTraceroute = { viewModel.startTraceroute(host.ip) },
+                    hasSsh = hasSsh,
                     isPinging = pingState is PingState.Pinging && (pingState as PingState.Pinging).host == host.ip,
                     pingState = if (pingState is PingState.Pinging && (pingState as PingState.Pinging).host == host.ip) {
                         pingState as PingState.Pinging
-                    } else null
+                    } else null,
+                    tracerouteState = if (tracerouteState is TracerouteViewState.Tracing &&
+                        (tracerouteState as TracerouteViewState.Tracing).targetIp == host.ip
+                    ) {
+                        tracerouteState as TracerouteViewState.Tracing
+                    } else null,
+                    isTracing = tracerouteState is TracerouteViewState.Tracing &&
+                        (tracerouteState as TracerouteViewState.Tracing).targetIp == host.ip,
+                    onStopTraceroute = { viewModel.stopTraceroute() }
                 )
             }
         }
 
-        // ── Port Scan Results Panel ───────────────────────────
         AnimatedVisibility(
             visible = portScanState !is PortScanState.Idle,
             enter = fadeIn(),
@@ -148,7 +189,19 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
             )
         }
 
-        // ── Action Button ─────────────────────────────────────
+        // ── Traceroute Panel ──────────────────────────────────
+        AnimatedVisibility(
+            visible = tracerouteState is TracerouteViewState.Tracing ||
+                tracerouteState is TracerouteViewState.Complete,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            TraceroutePanel(
+                tracerouteState = tracerouteState,
+                onDismiss = { viewModel.stopTraceroute() }
+            )
+        }
+
         Button(
             onClick = {
                 when (scanState) {
@@ -164,7 +217,7 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
                 containerColor = if (scanState is LanScanState.Scanning) TerminalRed else TerminalGreen,
                 contentColor = SurfaceDark
             ),
-            shape = RoundedCornerShape(4.dp)
+            shape = RoundedCornerShape(6.dp)
         ) {
             Icon(
                 imageVector = if (scanState is LanScanState.Scanning) Icons.Default.Stop else Icons.Default.PlayArrow,
@@ -188,20 +241,27 @@ private fun HostRow(
     onPortScan: () -> Unit,
     onPing: () -> Unit,
     onStopPing: () -> Unit,
+    onSsh: () -> Unit,
+    onTraceroute: () -> Unit,
+    hasSsh: Boolean,
     isPinging: Boolean,
-    pingState: PingState.Pinging?
+    pingState: PingState.Pinging?,
+    tracerouteState: TracerouteViewState.Tracing?,
+    isTracing: Boolean,
+    onStopTraceroute: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(6.dp))
             .background(if (isSelected) SurfaceElevated else SurfaceCardDark)
             .border(
                 width = 1.dp,
                 color = if (isSelected) TerminalGreen.copy(alpha = 0.4f) else SurfaceOverlay,
-                shape = RoundedCornerShape(4.dp)
+                shape = RoundedCornerShape(6.dp)
             )
             .clickable { onClick() }
+            .animateContentSize()
             .padding(10.dp)
     ) {
         Row(
@@ -209,50 +269,85 @@ private fun HostRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(
-                    text = host.hostname?.let { "$it  //  ${host.ip}" } ?: host.ip,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = TerminalGreen,
-                    fontWeight = FontWeight.Bold
-                )
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(
+                                when {
+                                    host.latencyMs < 10 -> SignalStrong
+                                    host.latencyMs < 50 -> SignalMedium
+                                    host.latencyMs > 0 -> SignalWeak
+                                    else -> TextDisabled
+                                }
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = host.hostname?.let { "$it  //  ${host.ip}" } ?: host.ip,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = TerminalGreen,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 if (host.latencyMs > 0) {
                     Text(
                         text = "RTT: ${host.latencyMs}ms",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
+                        color = TextSecondary,
+                        modifier = Modifier.padding(start = 16.dp)
                     )
                 }
             }
-            if (host.latencyMs > 0) {
+
+            if (hasSsh) {
                 Box(
                     modifier = Modifier
-                        .size(8.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(
-                            when {
-                                host.latencyMs < 10 -> SignalStrong
-                                host.latencyMs < 50 -> SignalMedium
-                                else -> SignalWeak
-                            }
+                        .background(TerminalCyan.copy(alpha = 0.1f))
+                        .border(1.dp, TerminalCyan.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                        .clickable { onSsh() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Terminal,
+                            contentDescription = "SSH",
+                            modifier = Modifier.size(12.dp),
+                            tint = TerminalCyan
                         )
-                )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "SSH",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TerminalCyan
+                        )
+                    }
+                }
             }
         }
 
-        // ── Expanded actions + live ping stats ────────────────
         AnimatedVisibility(visible = isSelected) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ActionChip("PORT SCAN", onPortScan)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ActionChip("PORTS", Icons.Default.ScatterPlot, onPortScan)
                     if (isPinging) {
-                        ActionChip("STOP PING", onStopPing, color = TerminalRed)
+                        ActionChip("STOP PING", Icons.Default.Stop, onStopPing, color = TerminalRed)
                     } else {
-                        ActionChip("PING", onPing, color = TerminalCyan)
+                        ActionChip("PING", Icons.Default.Speed, onPing, color = TerminalCyan)
+                    }
+                    if (isTracing) {
+                        ActionChip("STOP TRACE", Icons.Default.Stop, onStopTraceroute, color = TerminalRed)
+                    } else {
+                        ActionChip("TRACE", Icons.Default.Route, onTraceroute, color = TerminalAmber)
+                    }
+                    if (hasSsh) {
+                        ActionChip("SSH IN", Icons.Default.Terminal, onSsh, color = TerminalCyan)
                     }
                 }
 
-                // ── Live Ping Feed ────────────────────────────
                 if (pingState != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     PingStatsRow(pingState)
@@ -270,6 +365,110 @@ private fun HostRow(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TraceroutePanel(
+    tracerouteState: TracerouteViewState,
+    onDismiss: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(SurfaceCardDark)
+            .padding(10.dp)
+            .animateContentSize()
+    ) {
+        val targetIp = when (tracerouteState) {
+            is TracerouteViewState.Tracing -> tracerouteState.targetIp
+            is TracerouteViewState.Complete -> tracerouteState.targetIp
+            else -> return
+        }
+        val hops = when (tracerouteState) {
+            is TracerouteViewState.Tracing -> tracerouteState.hops
+            is TracerouteViewState.Complete -> tracerouteState.hops
+            else -> emptyList()
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "> TRACEROUTE: $targetIp",
+                style = MaterialTheme.typography.labelLarge,
+                color = TerminalAmber
+            )
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "Dismiss",
+                modifier = Modifier
+                    .size(18.dp)
+                    .clickable { onDismiss() },
+                tint = TextSecondary
+            )
+        }
+
+        if (tracerouteState is TracerouteViewState.Tracing) {
+            Spacer(modifier = Modifier.height(4.dp))
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(1.dp)),
+                color = TerminalAmber,
+                trackColor = TerminalDim,
+            )
+        }
+
+        if (hops.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            hops.forEach { hop ->
+                TracerouteHopRow(hop)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TracerouteHopRow(hop: TracerouteHop) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 1.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = String.format("%-3d", hop.ttl),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextDisabled
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = hop.ip ?: "*",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (hop.ip != null) TerminalGreen else TextDisabled,
+                fontWeight = FontWeight.Bold
+            )
+            hop.hostname?.let {
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "($it)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+        }
+        Text(
+            text = if (hop.rttMs > 0) "${hop.rttMs}ms" else "*",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (hop.rttMs > 0) TerminalCyan else TextDisabled
+        )
     }
 }
 
@@ -408,6 +607,7 @@ private fun PortRow(port: PortInfo) {
 @Composable
 private fun ActionChip(
     label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
     color: androidx.compose.ui.graphics.Color = TerminalGreen
 ) {
@@ -417,12 +617,21 @@ private fun ActionChip(
             .background(color.copy(alpha = 0.1f))
             .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
             .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp, vertical = 5.dp)
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = color
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(11.dp),
+                tint = color
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = color
+            )
+        }
     }
 }

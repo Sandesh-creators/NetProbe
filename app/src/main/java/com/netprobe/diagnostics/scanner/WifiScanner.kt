@@ -1,6 +1,7 @@
 package com.netprobe.diagnostics.scanner
 
 import android.content.Context
+import android.location.LocationManager
 import android.net.wifi.WifiManager
 import com.netprobe.diagnostics.data.model.CongestionLevel
 import com.netprobe.diagnostics.data.model.ChannelOccupancy
@@ -11,12 +12,36 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
 
 class WifiScanner(private val context: Context) {
 
     private val wifiManager: WifiManager =
         context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
+    private val locationManager =
+        context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+    /**
+     * On Android 10+, Wi-Fi scan results only contain SSID and frequency
+     * when Location Services (the device GPS toggle) are enabled.
+     * This is separate from the ACCESS_FINE_LOCATION permission.
+     */
+    fun isLocationEnabled(): Boolean {
+        return try {
+            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun getDiagnostics(): String {
+        val issues = mutableListOf<String>()
+        if (!isWifiEnabled()) issues.add("Wi-Fi disabled")
+        if (!isLocationEnabled()) issues.add("Location services disabled")
+        if (issues.isEmpty()) return "OK"
+        return issues.joinToString(", ")
+    }
 
     fun frequencyToChannel(frequencyMhz: Int): Pair<Int, WifiBand> {
         return when {
@@ -48,17 +73,22 @@ class WifiScanner(private val context: Context) {
         while (true) {
             try {
                 @Suppress("MissingPermission")
-                wifiManager.startScan()
+                val scanStarted = wifiManager.startScan()
+                if (!scanStarted) {
+                    emit(emptyList())
+                    delay(15_000)
+                    continue
+                }
             } catch (_: SecurityException) {
                 emit(emptyList())
-                delay(5000)
+                delay(5_000)
                 continue
             } catch (_: Exception) {
-                delay(5000)
+                delay(5_000)
                 continue
             }
 
-            delay(3500)
+            delay(4000)
 
             try {
                 @Suppress("MissingPermission")
@@ -78,10 +108,10 @@ class WifiScanner(private val context: Context) {
     }.flowOn(Dispatchers.IO)
 
     @Suppress("MissingPermission")
-    suspend fun singleScan(): List<WifiNetworkInfo> = withContext(Dispatchers.IO) {
-        try {
+    suspend fun singleScan(): List<WifiNetworkInfo> {
+        return try {
             wifiManager.startScan()
-            delay(3000)
+            delay(4000)
             wifiManager.scanResults?.mapNotNull { scanResultToNetworkInfo(it) }
                 ?.distinctBy { it.bssid }
                 ?.sortedByDescending { it.rssi }
@@ -92,13 +122,21 @@ class WifiScanner(private val context: Context) {
     }
 
     private fun scanResultToNetworkInfo(sr: android.net.wifi.ScanResult): WifiNetworkInfo? {
-        val ssid = sr.SSID?.takeIf { it.isNotEmpty() } ?: return null
-        val (channel, band) = frequencyToChannel(sr.frequency)
+        // Use SSID if available, otherwise fall back to BSSID so we still
+        // capture networks even when location is off (SSID will be "<unknown ssid>")
+        val ssid = sr.SSID?.takeIf { it.isNotEmpty() && it != "<unknown ssid>" }
+            ?: sr.BSSID?.takeIf { it.isNotEmpty() }
+            ?: return null
+
+        val frequency = sr.frequency
+        if (frequency <= 0) return null
+
+        val (channel, band) = frequencyToChannel(frequency)
 
         return WifiNetworkInfo(
             ssid = ssid,
             bssid = sr.BSSID ?: "Unknown",
-            frequency = sr.frequency,
+            frequency = frequency,
             channel = channel,
             band = band,
             rssi = sr.level,
