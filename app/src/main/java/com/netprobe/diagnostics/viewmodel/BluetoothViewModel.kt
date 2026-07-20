@@ -107,6 +107,13 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         _selectedDevice.value = null
     }
 
+    fun enableBluetooth() {
+        val context = getApplication<Application>()
+        val intent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        context.startActivity(intent)
+    }
+
     fun startBatteryMonitor(device: BluetoothDeviceInfo) {
         val context = getApplication<Application>()
         val intent = Intent(context, BatteryMonitorService::class.java).apply {

@@ -19,27 +19,36 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.netprobe.diagnostics.BuildConfig
 import com.netprobe.diagnostics.ui.theme.*
-import com.netprobe.diagnostics.viewmodel.BluetoothViewModel
-import com.netprobe.diagnostics.viewmodel.ChannelAnalyzerViewModel
-import com.netprobe.diagnostics.viewmodel.LanScanViewModel
-import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.*
+import com.netprobe.diagnostics.viewmodel.*
 
 enum class Tab(val label: String, val icon: ImageVector, val tag: String) {
     LAN("LAN Scan", Icons.Default.NetworkCheck, "lan"),
     BLUETOOTH("BT Explorer", Icons.Default.Bluetooth, "bt"),
     CHANNELS("Channel Map", Icons.Default.SignalCellularAlt, "ch"),
-    DEVICE_INFO("Net Info", Icons.Default.SettingsEthernet, "net")
+    DEVICE_INFO("Net Info", Icons.Default.SettingsEthernet, "net"),
+    TOOLS("Tools", Icons.Default.Build, "tools")
+}
+
+enum class ToolItem(val label: String, val icon: ImageVector, val tag: String) {
+    HEATMAP("Heatmap", Icons.Default.GridView, "heatmap"),
+    ASSETS("Assets", Icons.Default.DevicesOther, "assets"),
+    TOPOLOGY("Topology", Icons.Default.AccountTree, "topology")
 }
 
 @Composable
 fun MainScreen(
     lanScanViewModel: LanScanViewModel = viewModel(),
     bluetoothViewModel: BluetoothViewModel = viewModel(),
-    channelAnalyzerViewModel: ChannelAnalyzerViewModel = viewModel()
+    channelAnalyzerViewModel: ChannelAnalyzerViewModel = viewModel(),
+    heatmapViewModel: HeatmapViewModel = viewModel(),
+    assetDiscoveryViewModel: AssetDiscoveryViewModel = viewModel(),
+    topologyViewModel: TopologyViewModel = viewModel(),
+    pcapExportViewModel: PcapExportViewModel = viewModel()
 ) {
     var activeTab by remember { mutableStateOf(Tab.LAN) }
+    var activeTool by remember { mutableStateOf(ToolItem.HEATMAP) }
+
+    val scanState by lanScanViewModel.scanState.collectAsState()
 
     Column(
         modifier = Modifier
@@ -111,6 +120,121 @@ fun MainScreen(
                 Tab.BLUETOOTH -> BluetoothExplorerScreen(bluetoothViewModel)
                 Tab.CHANNELS -> ChannelAnalyzerScreen(channelAnalyzerViewModel)
                 Tab.DEVICE_INFO -> DeviceInfoScreen()
+                Tab.TOOLS -> ToolsScreen(
+                    activeTool = activeTool,
+                    onToolSelected = { activeTool = it },
+                    heatmapViewModel = heatmapViewModel,
+                    assetDiscoveryViewModel = assetDiscoveryViewModel,
+                    topologyViewModel = topologyViewModel,
+                    pcapExportViewModel = pcapExportViewModel,
+                    scanState = scanState,
+                    lanScanViewModel = lanScanViewModel
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolsScreen(
+    activeTool: ToolItem,
+    onToolSelected: (ToolItem) -> Unit,
+    heatmapViewModel: HeatmapViewModel,
+    assetDiscoveryViewModel: AssetDiscoveryViewModel,
+    topologyViewModel: TopologyViewModel,
+    pcapExportViewModel: PcapExportViewModel,
+    scanState: LanScanState,
+    lanScanViewModel: LanScanViewModel
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SurfaceDark)
+            .padding(horizontal = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            ToolItem.entries.forEach { tool ->
+                val isActive = activeTool == tool
+                val color = when (tool) {
+                    ToolItem.HEATMAP -> TerminalAmber
+                    ToolItem.ASSETS -> TerminalCyan
+                    ToolItem.TOPOLOGY -> TerminalGreen
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (isActive) color.copy(alpha = 0.12f) else SurfaceCardDark)
+                        .border(1.dp, if (isActive) color.copy(alpha = 0.4f) else SurfaceOverlay, RoundedCornerShape(4.dp))
+                        .clickable { onToolSelected(tool) }
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            tool.icon,
+                            contentDescription = tool.label,
+                            modifier = Modifier.size(12.dp),
+                            tint = if (isActive) color else TextDisabled
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            tool.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isActive) color else TextSecondary,
+                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(color = SurfaceOverlay, thickness = 1.dp)
+
+        AnimatedContent(
+            targetState = activeTool,
+            transitionSpec = {
+                fadeIn() + slideInVertically { it / 4 } togetherWith
+                    fadeOut() + slideOutVertically { -it / 4 }
+            },
+            label = "tool_transition"
+        ) { tool ->
+            when (tool) {
+                ToolItem.HEATMAP -> HeatmapScreen(heatmapViewModel)
+                ToolItem.ASSETS -> AssetDiscoveryScreen(assetDiscoveryViewModel)
+                ToolItem.TOPOLOGY -> {
+                    val hosts = when (scanState) {
+                        is LanScanState.Scanning -> scanState.aliveHosts
+                        is LanScanState.Complete -> scanState.aliveHosts
+                        else -> emptyList()
+                    }
+                    Column {
+                        PcapExportSection(pcapExportViewModel)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (hosts.isNotEmpty()) {
+                            TopologyMapScreen(
+                                viewModel = topologyViewModel,
+                                hostCount = hosts.size
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "Run a LAN scan first to build topology",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextDisabled
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -121,10 +245,10 @@ private fun TopStatusBar() {
     var currentTime by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        val sdf = SimpleDateFormat("HH:mm:ss", Locale.US)
+        val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
         while (true) {
-            currentTime = sdf.format(Date())
-            delay(1000)
+            currentTime = sdf.format(java.util.Date())
+            kotlinx.coroutines.delay(1000)
         }
     }
 

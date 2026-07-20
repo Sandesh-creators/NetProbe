@@ -13,8 +13,8 @@ android {
         applicationId = "com.netprobe.diagnostics"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "2.2.0"
+        versionCode = 6
+        versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -24,11 +24,14 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("${rootProject.projectDir}/netprobe-release.jks")
-            storePassword = System.getenv("KEYSTORE_PASS") ?: "Nu!!A\$tr0!!01"
-            keyAlias = "netprobe"
-            keyPassword = System.getenv("KEYSTORE_PASS") ?: "Nu!!A\$tr0!!01"
+        val keystorePass = System.getenv("KEYSTORE_PASS")
+        if (keystorePass != null) {
+            create("release") {
+                storeFile = file("${rootProject.projectDir}/netprobe-release.jks")
+                storePassword = keystorePass
+                keyAlias = "netprobe"
+                keyPassword = keystorePass
+            }
         }
     }
 
@@ -36,7 +39,10 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            val releaseSigning = signingConfigs.findByName("release")
+            if (releaseSigning != null) {
+                signingConfig = releaseSigning
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -76,9 +82,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.animation:animation")
-
-    // Navigation Compose
-    implementation("androidx.navigation:navigation-compose:2.8.5")
 
     // Room
     val roomVersion = "2.6.1"

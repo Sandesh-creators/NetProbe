@@ -36,3 +36,19 @@ val BtUnknownColor   = Color(0xFF78909C)
 
 val PortOpenColor    = Color(0xFF00E676)
 val PortClosedColor  = Color(0xFF616161)
+
+val HeatmapCold    = Color(0xFF0D47A1)
+val HeatmapCool    = Color(0xFF00BCD4)
+val HeatmapWarm    = Color(0xFFFFC107)
+val HeatmapHot     = Color(0xFFFF1744)
+
+val AssetKnown     = Color(0xFF00E676)
+val AssetUnknown   = Color(0xFFFF6D00)
+val AssetFlagged   = Color(0xFFFF1744)
+
+val NodeGateway    = Color(0xFFFFB000)
+val NodeHost       = Color(0xFF00E5FF)
+val NodeSelf       = Color(0xFF00FF41)
+val NodeUnknown    = Color(0xFF78909C)
+val EdgeActive     = Color(0xFF4CAF50)
+val EdgeInactive   = Color(0xFF424242)

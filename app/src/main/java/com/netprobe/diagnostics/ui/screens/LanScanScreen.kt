@@ -45,12 +45,68 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
     val context = LocalContext.current
 
     var selectedHost by remember { mutableStateOf<HostInfo?>(null) }
+    var showWoLDialog by remember { mutableStateOf(false) }
+    var wolMacInput by remember { mutableStateOf("") }
 
     LaunchedEffect(toastMessage) {
         toastMessage?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearToast()
         }
+    }
+
+    if (showWoLDialog) {
+        AlertDialog(
+            onDismissRequest = { showWoLDialog = false },
+            containerColor = SurfaceCardDark,
+            titleContentColor = TerminalCyan,
+            textContentColor = TextSecondary,
+            title = { Text("> WAKE ON LAN") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Enter the MAC address of the target device to send a magic packet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextDisabled
+                    )
+                    OutlinedTextField(
+                        value = wolMacInput,
+                        onValueChange = { wolMacInput = it.uppercase() },
+                        label = { Text("MAC ADDRESS") },
+                        placeholder = { Text("AA:BB:CC:DD:EE:FF") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = TerminalCyan,
+                            unfocusedBorderColor = SurfaceOverlay,
+                            focusedLabelColor = TerminalCyan,
+                            unfocusedLabelColor = TextDisabled,
+                            cursorColor = TerminalCyan,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextSecondary
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (wolMacInput.isNotBlank()) {
+                            viewModel.sendWol(wolMacInput.trim())
+                            wolMacInput = ""
+                            showWoLDialog = false
+                        }
+                    }
+                ) {
+                    Text("SEND", color = TerminalGreen)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWoLDialog = false; wolMacInput = "" }) {
+                    Text("CANCEL", color = TextDisabled)
+                }
+            }
+        )
     }
 
     if (sshDialogState is SshDialogState.Showing) {
@@ -262,6 +318,7 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
                             onStopPing = { viewModel.stopPing() },
                             onSsh = { viewModel.openSsh(host.ip) },
                             onTraceroute = { viewModel.startTraceroute(host.ip) },
+                            onWoL = { host.macAddress?.let { viewModel.sendWol(it) } },
                             hasSsh = hasSsh,
                             openPortsCount = openCount,
                             isPinging = pingState is PingState.Pinging && (pingState as PingState.Pinging).host == host.ip,
@@ -341,6 +398,22 @@ fun LanScanScreen(viewModel: LanScanViewModel) {
 
                 if (hosts.isNotEmpty()) {
                     IconButton(
+                        onClick = { showWoLDialog = true },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(TerminalAmber.copy(alpha = 0.15f))
+                            .border(1.dp, TerminalAmber.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                    ) {
+                        Icon(
+                            Icons.Default.Power,
+                            contentDescription = "Wake on LAN",
+                            tint = TerminalAmber,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    IconButton(
                         onClick = {
                             val text = buildExportText(hosts, portScanState, scanState)
                             val intent = Intent(Intent.ACTION_SEND).apply {
@@ -378,6 +451,7 @@ private fun HostRow(
     onStopPing: () -> Unit,
     onSsh: () -> Unit,
     onTraceroute: () -> Unit,
+    onWoL: () -> Unit,
     hasSsh: Boolean,
     openPortsCount: Int?,
     isPinging: Boolean,
@@ -446,13 +520,21 @@ private fun HostRow(
                         }
                     }
                 }
-                if (host.latencyMs > 0) {
-                    Text(
-                        text = "RTT: ${host.latencyMs}ms",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (host.latencyMs > 0) {
+                        Text(
+                            text = "RTT: ${host.latencyMs}ms",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                    if (!host.macAddress.isNullOrBlank()) {
+                        VendorLabel(mac = host.macAddress)
+                    }
                 }
             }
 
@@ -499,6 +581,9 @@ private fun HostRow(
                     }
                     if (hasSsh) {
                         ActionChip("SSH IN", Icons.Default.Terminal, onSsh, color = TerminalCyan)
+                    }
+                    if (!host.macAddress.isNullOrBlank()) {
+                        ActionChip("WOL", Icons.Default.Power, onWoL, color = TerminalAmber)
                     }
                 }
 
@@ -847,9 +932,7 @@ private fun buildExportText(
             appendLine()
             appendLine("  #${index + 1}  ${host.hostname ?: "Unknown"}")
             appendLine("      IP      : ${host.ip}")
-            if (host.macAddress != null) {
-                appendLine("      MAC     : ${host.macAddress}")
-            }
+            appendLine("      MAC     : ${host.macAddress ?: "N/A"}")
             appendLine("      Latency : ${host.latencyMs}ms")
             if (host.openPorts.isNotEmpty()) {
                 appendLine("      Ports   : ${host.openPorts.joinToString(", ") { "${it.port}/${it.service}" }}")

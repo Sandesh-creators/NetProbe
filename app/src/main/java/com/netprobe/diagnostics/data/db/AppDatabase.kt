@@ -5,15 +5,31 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.netprobe.diagnostics.data.db.dao.AssetDao
+import com.netprobe.diagnostics.data.db.dao.RssiSampleDao
+import com.netprobe.diagnostics.data.db.entity.AssetEventEntity
+import com.netprobe.diagnostics.data.db.entity.DiscoveredAssetEntity
+import com.netprobe.diagnostics.data.db.entity.RssiSampleEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-@Database(entities = [PortEntity::class], version = 1, exportSchema = true)
+@Database(
+    entities = [
+        PortEntity::class,
+        RssiSampleEntity::class,
+        DiscoveredAssetEntity::class,
+        AssetEventEntity::class
+    ],
+    version = 2,
+    exportSchema = true
+)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun portDao(): PortDao
+    abstract fun rssiSampleDao(): RssiSampleDao
+    abstract fun assetDao(): AssetDao
 
     companion object {
         @Volatile
@@ -27,6 +43,8 @@ abstract class AppDatabase : RoomDatabase() {
                     "netprobe_database"
                 )
                     .addCallback(PortDictionaryCallback(context.applicationContext))
+                    .addMigrations(MIGRATION_1_2)
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance
