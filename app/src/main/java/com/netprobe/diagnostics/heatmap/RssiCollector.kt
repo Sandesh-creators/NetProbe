@@ -98,15 +98,19 @@ class RssiCollector(
 
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                results.add(
-                    RssiSnapshot(
-                        sourceType = "BLE",
-                        address = result.device.address,
-                        name = result.device.name,
-                        rssi = result.rssi,
-                        frequency = null
+                try {
+                    val device = result.device
+                    val address = device.address ?: return
+                    results.add(
+                        RssiSnapshot(
+                            sourceType = "BLE",
+                            address = address,
+                            name = try { device.name } catch (_: SecurityException) { null },
+                            rssi = result.rssi,
+                            frequency = null
+                        )
                     )
-                )
+                } catch (_: SecurityException) { }
             }
             override fun onScanFailed(errorCode: Int) { latch.complete(Unit) }
         }

@@ -13,6 +13,7 @@ import android.content.Context
 import android.os.Build
 import com.netprobe.diagnostics.data.model.BluetoothDeviceInfo
 import com.netprobe.diagnostics.data.model.DeviceType
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
@@ -24,10 +25,10 @@ import kotlinx.coroutines.withContext
 
 class BleScanner(private val context: Context) {
 
-    private val bluetoothManager: BluetoothManager =
-        context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    private val bluetoothManager: BluetoothManager? =
+        context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
 
-    private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
+    private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager?.adapter
 
     private val bleScanner: BluetoothLeScanner?
         get() = bluetoothAdapter?.bluetoothLeScanner
@@ -74,7 +75,7 @@ class BleScanner(private val context: Context) {
             return@callbackFlow
         }
 
-        val discoveredDevices = mutableMapOf<String, BluetoothDeviceInfo>()
+        val discoveredDevices = ConcurrentHashMap<String, BluetoothDeviceInfo>()
 
         val scanSettings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
@@ -127,8 +128,8 @@ class BleScanner(private val context: Context) {
 
         try {
             scanner.startScan(null, scanSettings, callback)
-        } catch (e: SecurityException) {
-            close(Exception("Bluetooth permission denied. Please grant Bluetooth permissions in Settings."))
+        } catch (e: Exception) {
+            close(Exception("Bluetooth scan failed: ${e.message}"))
             return@callbackFlow
         }
 
@@ -189,7 +190,7 @@ class BleScanner(private val context: Context) {
     private fun extractTxPower(result: ScanResult): Int? {
         val record = result.scanRecord ?: return null
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            record.txPowerLevel.takeIf { it != android.bluetooth.le.ScanResult.TX_POWER_NOT_PRESENT }
+            record.txPowerLevel.takeIf { it != Int.MIN_VALUE }
         } else {
             null
         }

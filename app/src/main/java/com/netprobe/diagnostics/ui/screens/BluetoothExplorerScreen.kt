@@ -122,6 +122,28 @@ fun BluetoothExplorerScreen(viewModel: BluetoothViewModel) {
             }
         }
 
+        // ── Error Banner ─────────────────────────────────────
+        if (btState is BluetoothState.Error) {
+            val errorMsg = (btState as BluetoothState.Error).message
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(TerminalRed.copy(alpha = 0.1f))
+                    .border(1.dp, TerminalRed.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                    .padding(12.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "ERROR: $errorMsg",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TerminalRed
+                    )
+                }
+            }
+        }
+
         // ── Bluetooth Off Warning + Enable Button ─────────────
         if (btState is BluetoothState.BluetoothOff) {
             Box(

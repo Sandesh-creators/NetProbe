@@ -13,10 +13,12 @@ import com.netprobe.diagnostics.scanner.BleScanner
 import com.netprobe.diagnostics.service.BatteryMonitorService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class BluetoothViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -73,9 +75,9 @@ class BluetoothViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         _btState.value = BluetoothState.Scanning(emptyList())
-        scanJob = viewModelScope.launch {
+        scanJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                val classic = bleScanner.getBondedClassicDevices()
+                val classic = withContext(Dispatchers.IO) { bleScanner.getBondedClassicDevices() }
                 _btState.value = BluetoothState.Scanning(classic)
 
                 bleScanner.scanBleDevices().collect { bleDevices ->

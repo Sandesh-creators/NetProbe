@@ -162,14 +162,17 @@ class AssetDiscoveryEngine(
 
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val device = result.device
-                devices.add(
-                    BleDevice(
-                        address = device.address,
-                        name = device.name ?: "Unknown",
-                        rssi = result.rssi
+                try {
+                    val device = result.device
+                    val address = device.address ?: return
+                    devices.add(
+                        BleDevice(
+                            address = address,
+                            name = try { device.name } catch (_: SecurityException) { null } ?: "Unknown",
+                            rssi = result.rssi
+                        )
                     )
-                )
+                } catch (_: SecurityException) { }
             }
             override fun onScanFailed(errorCode: Int) {
                 latch.countDown()
