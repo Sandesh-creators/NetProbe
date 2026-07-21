@@ -84,7 +84,11 @@ class BleScanner(private val context: Context) {
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val device = result.device
-                val address = device.address ?: return
+                val address = try {
+                    device.address
+                } catch (e: SecurityException) {
+                    return
+                } ?: return
 
                 val existingDevice = discoveredDevices[address]
                 if (existingDevice == null || result.rssi > existingDevice.rssi) {
@@ -121,7 +125,12 @@ class BleScanner(private val context: Context) {
             }
         }
 
-        scanner.startScan(null, scanSettings, callback)
+        try {
+            scanner.startScan(null, scanSettings, callback)
+        } catch (e: SecurityException) {
+            close(Exception("Bluetooth permission denied. Please grant Bluetooth permissions in Settings."))
+            return@callbackFlow
+        }
 
         awaitClose {
             try {
@@ -140,17 +149,22 @@ class BleScanner(private val context: Context) {
     @SuppressLint("MissingPermission")
     fun getBondedClassicDevices(): List<BluetoothDeviceInfo> {
         val adapter = bluetoothAdapter ?: return emptyList()
-        return adapter.bondedDevices?.mapNotNull { device ->
-            val name = try { device.name } catch (e: SecurityException) { null } ?: return@mapNotNull null
-            BluetoothDeviceInfo(
-                name = name,
-                address = device.address ?: return@mapNotNull null,
-                type = classifyDeviceType(device),
-                rssi = 0, // RSSI unknown for bonded-only lookup
-                bondState = try { device.bondState } catch (e: SecurityException) { BluetoothDevice.BOND_NONE },
-                isConnectable = true
-            )
-        }?.distinctBy { it.address } ?: emptyList()
+        return try {
+            adapter.bondedDevices?.mapNotNull { device ->
+                val name = try { device.name } catch (e: SecurityException) { null } ?: return@mapNotNull null
+                val address = try { device.address } catch (e: SecurityException) { null } ?: return@mapNotNull null
+                BluetoothDeviceInfo(
+                    name = name,
+                    address = address,
+                    type = classifyDeviceType(device),
+                    rssi = 0,
+                    bondState = try { device.bondState } catch (e: SecurityException) { BluetoothDevice.BOND_NONE },
+                    isConnectable = true
+                )
+            }?.distinctBy { it.address } ?: emptyList()
+        } catch (e: SecurityException) {
+            emptyList()
+        }
     }
 
     /**
